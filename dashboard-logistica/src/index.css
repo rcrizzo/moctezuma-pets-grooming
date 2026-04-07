@@ -1,111 +1,139 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+  --sidebar-bg: #111827;      /* Slate muy oscuro y elegante */
+  --sidebar-hover: #1F2937;   /* Hover sutil en el menú */
+  --main-bg: #F3F4F6;         /* Gris perla para el fondo */
+  --accent: #D97706;          /* Ocre/Ámbar sofisticado */
+  --accent-hover: #B45309;
+  --text-dark: #111827;
+  --text-muted: #6B7280;
+  --border-light: #E5E7EB;
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--main-bg);
+  color: var(--text-dark);
   margin: 0;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
+/* --- Layout Principal --- */
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  width: 280px;
+  background-color: var(--sidebar-bg);
+  color: white;
+  position: fixed;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
+.nav-item-custom {
+  padding: 12px 20px;
+  margin: 4px 20px;
+  border-radius: 8px;
+  color: #9CA3AF;
+  text-decoration: none;
   font-weight: 500;
-  color: var(--text-h);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+.nav-item-custom:hover {
+  background-color: var(--sidebar-hover);
+  color: white;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+.nav-item-custom.active {
+  background-color: rgba(217, 119, 6, 0.1);
+  color: var(--accent);
 }
 
-code {
+/* --- Contenido Principal --- */
+.main-wrapper {
+  flex-grow: 1;
+  margin-left: 280px; /* Deja espacio para el sidebar fijo */
+  display: flex;
+  flex-direction: column;
+}
+
+.top-header {
+  height: 80px;
+  background-color: white;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+}
+
+.content-area {
+  padding: 40px; /* Mucho respiro alrededor de las tarjetas */
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* --- Tarjetas y Elementos --- */
+.glass-card {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid white;
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+/* Inputs con mucho respiro (padding interior alto) */
+.custom-input {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid #D1D5DB;
   font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  color: var(--text-dark);
+  transition: border-color 0.2s;
 }
+
+.custom-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.2);
+  outline: none;
+}
+
+.custom-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+/* Tabla hermosa y espaciada */
+.beauty-table th {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 20px !important;
+  border-bottom: 2px solid var(--border-light) !important;
+}
+
+.beauty-table td {
+  padding: 24px 20px !important;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.beauty-table tr:last-child td { border-bottom: none; }
+.beauty-table tr:hover td { background-color: #F9FAFB; }
