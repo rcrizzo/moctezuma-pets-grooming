@@ -1,6 +1,7 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth"; // <-- 1. Importamos getAuth
 
 // Reemplaza esto con tu configuración exacta copiada de la consola
 const firebaseConfig = {
@@ -13,8 +14,6 @@ const firebaseConfig = {
   measurementId: "G-KHYGDSNVBH"
 };
 
-// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
-
-// Inicializar Firestore y exportarlo para usarlo en otros archivos
 export const db = getFirestore(app);
+export const auth = getAuth(app);
