@@ -1,165 +1,357 @@
-import React, { useState } from 'react';
-import { Row, Col, Badge, Modal, Form } from 'react-bootstrap';
+import React, { useState, useEffect } from 'react';
+import { Row, Col, Modal, Form, Table, Spinner, Badge } from 'react-bootstrap';
+import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
+import { IoHome, IoSearch, IoAdd, IoEye, IoBed, IoRestaurant, IoCalendarOutline, IoCheckmarkDone, IoTrash, IoNotifications, IoCloseCircle } from 'react-icons/io5';
 
-// Datos simulados de las habitaciones/jaulas
-const habitacionesMock = [
-  { id: '101', tipo: 'Suite Premium', estado: 'Ocupada', mascota: 'Luna', raza: 'Poodle', salida: '12 Abr 2026' },
-  { id: '102', tipo: 'Estándar', estado: 'Disponible', mascota: null, raza: null, salida: null },
-  { id: '103', tipo: 'Estándar', estado: 'Limpieza', mascota: null, raza: null, salida: null },
-  { id: '104', tipo: 'Suite Premium', estado: 'Ocupada', mascota: 'Max', raza: 'Golden Retriever', salida: '10 Abr 2026' },
-  { id: '105', tipo: 'Estándar', estado: 'Ocupada', mascota: 'Boby', raza: 'Pug', salida: '15 Abr 2026' },
-  { id: '106', tipo: 'Estándar', estado: 'Disponible', mascota: null, raza: null, salida: null },
-];
+// --- CATÁLOGOS ---
+const TIPOS_HABITACION = ['Corral General', 'Jaula Individual', 'Suite Premium', 'Área de Gatos'];
+const NIVELES_SOCIALIZACION = ['Amigable', 'Reactivo', 'Miedoso'];
 
 export default function Hospedaje() {
-
-  const [showModal, setShowModal] = useState(false);
+  const [mascotas, setMascotas] = useState([]);
+  const [estancias, setEstancias] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [busqueda, setBusqueda] = useState('');
   
-  // Función para darle color a cada tarjeta según su estado
-  const getEstadoStyles = (estado) => {
-    switch(estado) {
-      case 'Disponible': return { border: '#10B981', bg: 'rgba(16, 185, 129, 0.05)', text: '#10B981' }; // Verde
-      case 'Ocupada': return { border: 'var(--accent)', bg: 'rgba(217, 119, 6, 0.05)', text: 'var(--accent)' }; // Ocre
-      case 'Limpieza': return { border: '#3B82F6', bg: 'rgba(59, 130, 246, 0.05)', text: '#3B82F6' }; // Azul
-      default: return { border: '#D1D5DB', bg: '#F9FAFB', text: '#6B7280' };
+  // Modales
+  const [showModalSolicitud, setShowModalSolicitud] = useState(false); // Para registrar manualmente
+  const [showModalAprobar, setShowModalAprobar] = useState(false); // Para aprobar y asignar cuarto
+  const [showModalFicha, setShowModalFicha] = useState(false); // Para ver el huésped y dar check-out
+
+  const estadoInicial = {
+    mascotaId: '', mascotaNombre: '', dueñoNombre: '', 
+    fechaIngreso: '', fechaSalida: '', 
+    guiaAlimentacion: '', // Viene de la App
+    nivelSocializacion: 'Amigable', // Viene de la App
+    pertenencias: '', notas: '', 
+    habitacion: 'Sin Asignar', // Se asigna al aprobar
+    estado: 'Pendiente' // 'Pendiente', 'Hospedado', 'Finalizado', 'Rechazado'
+  };
+
+  const [nuevaSolicitud, setNuevaSolicitud] = useState(estadoInicial);
+  const [solicitudActiva, setSolicitudActiva] = useState(null); // La que estamos evaluando/viendo
+
+  useEffect(() => {
+    const unsubMascotas = onSnapshot(query(collection(db, 'mascotas')), (snap) => {
+      setMascotas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const qEstancias = query(collection(db, 'hospedaje'), orderBy('createdAt', 'desc'));
+    const unsubEstancias = onSnapshot(qEstancias, (snap) => {
+      setEstancias(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setCargando(false);
+    });
+
+    return () => { unsubMascotas(); unsubEstancias(); };
+  }, []);
+
+  // --- ACCIONES ---
+
+  // 1. Crear solicitud (Manual desde mostrador)
+  const crearSolicitudManual = async (e) => {
+    e.preventDefault();
+    if (!nuevaSolicitud.mascotaId) return alert("Selecciona un huésped");
+    try {
+      await addDoc(collection(db, 'hospedaje'), {
+        ...nuevaSolicitud,
+        createdAt: serverTimestamp()
+      });
+      setShowModalSolicitud(false);
+      setNuevaSolicitud(estadoInicial);
+    } catch (err) { console.error(err); }
+  };
+
+  // 2. Aprobar Solicitud (Asignar cuarto y pasar a Hospedado)
+  const aprobarReserva = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, 'hospedaje', solicitudActiva.id), {
+        habitacion: solicitudActiva.habitacion,
+        estado: 'Hospedado',
+        aprobadoAt: serverTimestamp()
+      });
+      setShowModalAprobar(false);
+    } catch (err) { console.error(err); }
+  };
+
+  // 3. Rechazar Solicitud
+  const rechazarReserva = async (id) => {
+    if(window.confirm("¿Estás seguro de rechazar esta solicitud de hospedaje? Se notificará al cliente.")){
+      await updateDoc(doc(db, 'hospedaje', id), { estado: 'Rechazado' });
+      setShowModalAprobar(false);
     }
   };
 
+  // 4. Check-out
+  const darDeAlta = async (id) => {
+    if (window.confirm("¿Confirmas la salida de la mascota?")) {
+      await updateDoc(doc(db, 'hospedaje', id), { estado: 'Finalizado', salidaReal: serverTimestamp() });
+      setShowModalFicha(false);
+    }
+  };
+
+  // Filtros rápidos
+  const solicitudes = estancias.filter(e => e.estado === 'Pendiente');
+  const huespedes = estancias.filter(e => e.estado === 'Hospedado');
+  const salidasHoy = huespedes.filter(e => e.fechaSalida === new Date().toISOString().split('T')[0]);
+
+  // Estilos visuales
+  const colorSocializacion = (nivel) => {
+    if(nivel === 'Amigable') return 'success';
+    if(nivel === 'Reactivo') return 'danger';
+    return 'info'; // Miedoso
+  };
+
   return (
-    <div>
-      {/* 1. KPIs de Operación del Hotel */}
-      <Row className="mb-4 gx-4">
+    <div className="animate__animated animate__fadeIn">
+      {/* 1. DASHBOARD SUPERIOR */}
+      <Row className="mb-4 gx-3">
         <Col md={4}>
-          <div className="glass-card p-4 d-flex justify-content-between align-items-center" style={{borderLeft: '4px solid var(--accent)'}}>
-            <div>
-              <p className="text-muted fw-bold m-0" style={{fontSize: '12px', textTransform: 'uppercase'}}>Ocupación Actual</p>
-              <h2 className="fw-bold m-0 mt-1" style={{fontSize: '32px', color: 'var(--text-dark)'}}>50%</h2>
+          <div className="glass-card p-4 h-100 d-flex flex-column justify-content-center" style={{borderLeft: '4px solid #F59E0B'}}>
+            <div className="d-flex justify-content-between align-items-center">
+              <div>
+                <p className="text-muted small fw-bold mb-1 text-uppercase">Solicitudes App</p>
+                <h2 className="fw-bold m-0 text-warning">{solicitudes.length} Pendientes</h2>
+              </div>
+              <div className="p-3 bg-light rounded-circle"><IoNotifications size={28} color="#F59E0B" /></div>
             </div>
-            <div style={{fontSize: '32px', opacity: '0.2'}}>🏨</div>
           </div>
         </Col>
         <Col md={4}>
-          <div className="glass-card p-4 d-flex justify-content-between align-items-center" style={{borderLeft: '4px solid #10B981'}}>
-            <div>
-              <p className="text-muted fw-bold m-0" style={{fontSize: '12px', textTransform: 'uppercase'}}>Check-ins Hoy</p>
-              <h2 className="fw-bold m-0 mt-1" style={{fontSize: '32px', color: '#10B981'}}>2</h2>
+          <div className="glass-card p-4 h-100 d-flex flex-column justify-content-center" style={{borderLeft: '4px solid var(--accent)'}}>
+            <div className="d-flex justify-content-between align-items-center">
+              <div>
+                <p className="text-muted small fw-bold mb-1 text-uppercase">Ocupación Actual</p>
+                <h2 className="fw-bold m-0" style={{color: 'var(--accent)'}}>{huespedes.length} Huéspedes</h2>
+              </div>
+              <div className="p-3 bg-light rounded-circle"><IoHome size={28} color="var(--accent)" /></div>
             </div>
-            <div style={{fontSize: '32px', opacity: '0.2'}}>📥</div>
           </div>
         </Col>
         <Col md={4}>
-          <div className="glass-card p-4 d-flex justify-content-between align-items-center" style={{borderLeft: '4px solid #F59E0B'}}>
-            <div>
-              <p className="text-muted fw-bold m-0" style={{fontSize: '12px', textTransform: 'uppercase'}}>Check-outs Hoy</p>
-              <h2 className="fw-bold m-0 mt-1" style={{fontSize: '32px', color: '#F59E0B'}}>1</h2>
-            </div>
-            <div style={{fontSize: '32px', opacity: '0.2'}}>📤</div>
+          <div className="glass-card p-4 h-100 d-flex flex-column justify-content-center" style={{borderLeft: '4px solid #10B981'}}>
+             <button onClick={() => setShowModalSolicitud(true)} className="btn text-white fw-bold d-flex align-items-center justify-content-center gap-2 w-100 h-100 py-3" style={{backgroundColor: '#10B981', borderRadius: '10px', fontSize: '15px'}}>
+              <IoAdd size={22} /> Ingreso Manual (Mostrador)
+            </button>
           </div>
         </Col>
       </Row>
 
-      {/* 2. Cabecera del Mapa de Ocupación */}
-      <div className="d-flex justify-content-between align-items-end mb-4 mt-5">
-        <div>
-          <h3 className="fw-bold m-0" style={{fontSize: '22px'}}>Mapa de Habitaciones</h3>
-          <p className="text-muted m-0" style={{fontSize: '14px'}}>Control visual de estancias y limpieza.</p>
+      {/* 2. BANDEJA DE ENTRADA (SOLICITUDES DE LA APP) */}
+      <h5 className="fw-bold mb-3 mt-2 d-flex align-items-center gap-2">
+        <IoNotifications color="#F59E0B" /> Bandeja de Solicitudes (App)
+      </h5>
+      <Row className="mb-5 gx-3">
+        {solicitudes.length > 0 ? solicitudes.map(sol => (
+          <Col md={6} lg={4} key={sol.id}>
+            <div className="glass-card p-4 h-100" style={{borderTop: `4px solid ${sol.nivelSocializacion === 'Reactivo' ? '#EF4444' : '#3B82F6'}`}}>
+              <div className="d-flex justify-content-between align-items-start mb-2">
+                <h5 className="fw-bold m-0">{sol.mascotaNombre}</h5>
+                <Badge bg={colorSocializacion(sol.nivelSocializacion)}>{sol.nivelSocializacion}</Badge>
+              </div>
+              <p className="text-muted small mb-3">Dueño: {sol.dueñoNombre}</p>
+              <div className="bg-light p-2 rounded mb-3 small">
+                <strong>Fechas:</strong> {sol.fechaIngreso} al {sol.fechaSalida}
+              </div>
+              <button 
+                onClick={() => {setSolicitudActiva({...sol, habitacion: 'Corral General'}); setShowModalAprobar(true);}} 
+                className="btn btn-dark w-100 fw-bold"
+              >
+                Evaluar y Asignar
+              </button>
+            </div>
+          </Col>
+        )) : (
+          <Col><p className="text-muted italic ms-2">No hay solicitudes nuevas de hospedaje por el momento.</p></Col>
+        )}
+      </Row>
+
+      {/* 3. CONTROL DE HABITACIONES (HUÉSPEDES ACTIVOS) */}
+      <div className="glass-card mb-4">
+        <div className="p-4 border-bottom d-flex justify-content-between align-items-center">
+          <h5 className="fw-bold m-0 d-flex align-items-center gap-2"><IoBed color="var(--accent)"/> Huéspedes en Instalaciones</h5>
+          <div className="position-relative">
+            <IoSearch className="position-absolute" style={{left: '12px', top: '12px', color: '#94A3B8'}} />
+            <Form.Control type="text" placeholder="Buscar..." className="custom-input ps-5" style={{width: '250px'}} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+          </div>
         </div>
-        <div className="d-flex gap-3">
-          <button className="btn fw-bold px-4 py-2" style={{backgroundColor: '#F3F4F6', color: 'var(--text-dark)', borderRadius: '8px'}}>
-            Ver Calendario
-          </button>
-          <button onClick={() => setShowModal(true)} className="btn text-white fw-bold px-4 py-2" style={{backgroundColor: 'var(--accent)', borderRadius: '8px'}}>
-            + Nuevo Check-in
-          </button>
-        </div>
+
+        <Table borderless hover responsive className="beauty-table m-0 align-middle">
+          <thead>
+            <tr>
+              <th>Huésped</th>
+              <th>Habitación</th>
+              <th>Socialización</th>
+              <th>Salida Programada</th>
+              <th className="text-end">Ficha</th>
+            </tr>
+          </thead>
+          <tbody>
+            {huespedes.filter(h => h.mascotaNombre?.toLowerCase().includes(busqueda.toLowerCase())).map((huesped) => (
+              <tr key={huesped.id}>
+                <td>
+                  <span className="fw-bold d-block">{huesped.mascotaNombre}</span>
+                  <small className="text-muted">{huesped.dueñoNombre}</small>
+                </td>
+                <td><Badge bg="secondary">{huesped.habitacion}</Badge></td>
+                <td><Badge bg={colorSocializacion(huesped.nivelSocializacion)} style={{fontSize: '10px'}}>{huesped.nivelSocializacion}</Badge></td>
+                <td>
+                  <strong className={huesped.fechaSalida === new Date().toISOString().split('T')[0] ? 'text-danger' : 'text-dark'}>
+                    {huesped.fechaSalida}
+                  </strong>
+                </td>
+                <td className="text-end">
+                  <button onClick={() => {setSolicitudActiva(huesped); setShowModalFicha(true);}} className="btn btn-sm btn-light border p-2">
+                    <IoEye size={18} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {huespedes.length === 0 && (
+              <tr><td colSpan="5" className="text-center py-5 text-muted">Habitaciones vacías.</td></tr>
+            )}
+          </tbody>
+        </Table>
       </div>
 
-      {/* 3. Grid de Habitaciones */}
-      <Row className="gx-4 gy-4">
-        {habitacionesMock.map((hab) => {
-          const styles = getEstadoStyles(hab.estado);
-          return (
-            <Col md={4} lg={4} key={hab.id}>
-              <div className="glass-card p-4 h-100" style={{ borderTop: `4px solid ${styles.border}`, backgroundColor: styles.bg }}>
-                <div className="d-flex justify-content-between align-items-start mb-3">
-                  <div>
-                    <h4 className="fw-bold m-0" style={{fontSize: '18px', color: 'var(--text-dark)'}}>Hab. {hab.id}</h4>
-                    <span className="text-muted" style={{fontSize: '12px'}}>{hab.tipo}</span>
+      {/* --- MODAL 1: APROBAR SOLICITUD DE LA APP --- */}
+      <Modal show={showModalAprobar} onHide={() => setShowModalAprobar(false)} centered size="lg">
+        <Modal.Header closeButton className="bg-light"><Modal.Title className="fw-bold">Evaluar Solicitud de Reserva</Modal.Title></Modal.Header>
+        <Modal.Body className="p-4">
+          {solicitudActiva && (
+            <Form onSubmit={aprobarReserva}>
+              <Row className="mb-4">
+                <Col md={6}>
+                  <div className="p-3 bg-white border rounded h-100">
+                    <h6 className="fw-bold text-muted small mb-3">DATOS DE LA APP</h6>
+                    <p className="m-0 mb-1"><strong>Paciente:</strong> {solicitudActiva.mascotaNombre}</p>
+                    <p className="m-0 mb-1"><strong>Fechas:</strong> {solicitudActiva.fechaIngreso} - {solicitudActiva.fechaSalida}</p>
+                    <p className="m-0 mt-2"><strong>Socialización:</strong> <Badge bg={colorSocializacion(solicitudActiva.nivelSocializacion)}>{solicitudActiva.nivelSocializacion}</Badge></p>
                   </div>
-                  <Badge bg="transparent" style={{color: styles.text, border: `1px solid ${styles.text}`, borderRadius: '20px', padding: '5px 10px'}}>
-                    {hab.estado}
-                  </Badge>
-                </div>
+                </Col>
+                <Col md={6}>
+                  <div className="p-3 border rounded h-100" style={{backgroundColor: '#F8FAFC'}}>
+                    <h6 className="fw-bold text-muted small mb-2 d-flex align-items-center gap-1"><IoRestaurant/> GUÍA DE ALIMENTACIÓN</h6>
+                    <p className="m-0 text-dark small">{solicitudActiva.guiaAlimentacion || 'Sin instrucciones específicas.'}</p>
+                  </div>
+                </Col>
+              </Row>
 
-                {hab.estado === 'Ocupada' ? (
-                  <div className="mt-3 pt-3" style={{borderTop: '1px solid rgba(0,0,0,0.05)'}}>
-                    <div className="d-flex align-items-center gap-2 mb-2">
-                      <div style={{fontSize: '20px'}}>🐕</div>
-                      <div>
-                        <span className="fw-bold d-block" style={{fontSize: '14px', color: 'var(--text-dark)'}}>{hab.mascota}</span>
-                        <span className="text-muted d-block" style={{fontSize: '12px'}}>{hab.raza}</span>
-                      </div>
-                    </div>
-                    <div className="d-flex justify-content-between align-items-center mt-3">
-                      <span className="text-muted fw-bold" style={{fontSize: '11px', textTransform: 'uppercase'}}>Salida:</span>
-                      <span className="fw-medium" style={{fontSize: '13px'}}>{hab.salida}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 pt-3 d-flex justify-content-center align-items-center" style={{borderTop: '1px solid rgba(0,0,0,0.05)', minHeight: '80px'}}>
-                    <span className="text-muted" style={{fontSize: '13px', fontStyle: 'italic'}}>
-                      {hab.estado === 'Limpieza' ? 'Personal de limpieza asignado' : 'Lista para recibir mascota'}
-                    </span>
-                  </div>
+              <hr />
+              <h6 className="fw-bold text-primary mb-3">Asignación de Logística</h6>
+              <Form.Group className="mb-4">
+                <Form.Label className="custom-label">Seleccionar Habitación (Sujeto a disponibilidad y comportamiento)</Form.Label>
+                <Form.Select 
+                  value={solicitudActiva.habitacion} 
+                  onChange={e => setSolicitudActiva({...solicitudActiva, habitacion: e.target.value})} 
+                  className="custom-input" style={{borderColor: 'var(--accent)', borderWidth: '2px'}}
+                >
+                  {TIPOS_HABITACION.map(h => <option key={h} value={h}>{h}</option>)}
+                </Form.Select>
+                {solicitudActiva.nivelSocializacion === 'Reactivo' && (
+                  <Form.Text className="text-danger fw-bold"><IoAlertCircle/> Se recomienda Jaula Individual por seguridad.</Form.Text>
                 )}
+              </Form.Group>
+
+              <div className="d-flex justify-content-between pt-2">
+                <button type="button" onClick={() => rechazarReserva(solicitudActiva.id)} className="btn btn-outline-danger d-flex align-items-center gap-2 fw-bold">
+                  <IoCloseCircle size={20} /> Rechazar
+                </button>
+                <button type="submit" className="btn text-white fw-bold px-5" style={{backgroundColor: 'var(--accent)', borderRadius: '8px'}}>
+                  <IoCheckmarkDone size={20} className="me-2"/> Confirmar y Hospedar
+                </button>
               </div>
-            </Col>
-          );
-        })}
-      </Row>
-      {/* Modal Nuevo Check-In */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} centered size="lg">
-        <Modal.Header closeButton style={{ borderBottom: '1px solid var(--border-light)' }}>
-          <Modal.Title className="fw-bold" style={{ fontSize: '20px' }}>Check-In de Hospedaje</Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-4 p-md-5">
-          <Form>
-            <Row className="mb-4 gx-4">
-              <Col md={6}>
-                <Form.Group>
-                  <Form.Label className="custom-label">Huésped (Mascota)</Form.Label>
-                  <Form.Control type="text" placeholder="Ej. Max" className="custom-input" />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group>
-                  <Form.Label className="custom-label">Habitación Asignada</Form.Label>
-                  <Form.Select className="custom-input">
-                    <option>102 - Estándar</option>
-                    <option>106 - Estándar</option>
-                  </Form.Select>
-                </Form.Group>
+            </Form>
+          )}
+        </Modal.Body>
+      </Modal>
+
+      {/* --- MODAL 2: NUEVA SOLICITUD MANUAL (Mostrador) --- */}
+      <Modal show={showModalSolicitud} onHide={() => setShowModalSolicitud(false)} centered size="lg">
+        <Modal.Header closeButton><Modal.Title className="fw-bold">Ingreso Manual (Recepción)</Modal.Title></Modal.Header>
+        <Modal.Body className="p-4">
+          <Form onSubmit={crearSolicitudManual}>
+            <Row className="mb-3">
+              <Col md={12}>
+                <Form.Label className="custom-label">Mascota (Dueño)</Form.Label>
+                <Form.Select onChange={e => {
+                  const pet = mascotas.find(m => m.id === e.target.value);
+                  setNuevaSolicitud({...nuevaSolicitud, mascotaId: e.target.value, mascotaNombre: pet?.nombre, dueñoNombre: pet?.dueñoNombre});
+                }} className="custom-input" required>
+                  <option value="">Seleccionar huésped...</option>
+                  {mascotas.map(m => <option key={m.id} value={m.id}>{m.nombre} (Dueño: {m.dueñoNombre})</option>)}
+                </Form.Select>
               </Col>
             </Row>
-            <Row className="mb-4 gx-4">
-              <Col md={6}>
-                <Form.Group>
-                  <Form.Label className="custom-label">Fecha y Hora de Salida</Form.Label>
-                  <Form.Control type="datetime-local" className="custom-input" />
-                </Form.Group>
+            <Row className="mb-3">
+              <Col md={6}><Form.Label className="custom-label">Ingreso</Form.Label><Form.Control type="date" onChange={e => setNuevaSolicitud({...nuevaSolicitud, fechaIngreso: e.target.value})} className="custom-input" required /></Col>
+              <Col md={6}><Form.Label className="custom-label">Salida</Form.Label><Form.Control type="date" onChange={e => setNuevaSolicitud({...nuevaSolicitud, fechaSalida: e.target.value})} className="custom-input" required /></Col>
+            </Row>
+
+            <Row className="mb-3">
+               <Col md={4}>
+                <Form.Label className="custom-label">Comportamiento</Form.Label>
+                <Form.Select onChange={e => setNuevaSolicitud({...nuevaSolicitud, nivelSocializacion: e.target.value})} className="custom-input">
+                  {NIVELES_SOCIALIZACION.map(n => <option key={n} value={n}>{n}</option>)}
+                </Form.Select>
               </Col>
-              <Col md={6}>
-                <Form.Group>
-                  <Form.Label className="custom-label">Dieta Especial / Medicación</Form.Label>
-                  <Form.Control type="text" placeholder="Ej. Come 2 veces al día" className="custom-input" />
-                </Form.Group>
+              <Col md={8}>
+                <Form.Label className="custom-label">Guía de Alimentación</Form.Label>
+                <Form.Control type="text" placeholder="Ej: 2 tazas de ProPlan al día (8am y 6pm)" onChange={e => setNuevaSolicitud({...nuevaSolicitud, guiaAlimentacion: e.target.value})} className="custom-input" required />
               </Col>
             </Row>
-            <div className="d-flex justify-content-end mt-4">
-              <button type="button" onClick={() => setShowModal(false)} className="btn px-4 py-2 fw-bold text-muted me-3">Cancelar</button>
-              <button type="button" className="btn px-4 py-2 fw-bold text-white" style={{ backgroundColor: 'var(--accent)', borderRadius: '8px' }}>Confirmar Check-In</button>
-            </div>
+
+            <Form.Group className="mb-4">
+              <Form.Label className="custom-label">Inventario de Pertenencias / Notas</Form.Label>
+              <Form.Control as="textarea" rows={2} placeholder="Cobija, juguetes, correa..." onChange={e => setNuevaSolicitud({...nuevaSolicitud, pertenencias: e.target.value})} className="custom-input" />
+            </Form.Group>
+            <button type="submit" className="btn w-100 text-white fw-bold py-3" style={{backgroundColor: '#10B981', borderRadius: '10px'}}>Crear Solicitud Pendiente</button>
           </Form>
+        </Modal.Body>
+      </Modal>
+
+      {/* --- MODAL 3: FICHA DE HUÉSPED Y CHECK-OUT --- */}
+      <Modal show={showModalFicha} onHide={() => setShowModalFicha(false)} centered size="lg">
+        <Modal.Header closeButton><Modal.Title className="fw-bold">Ficha de Huésped</Modal.Title></Modal.Header>
+        <Modal.Body className="p-4">
+          {solicitudActiva && (
+            <div>
+              <div className="d-flex justify-content-between border-bottom pb-3 mb-4">
+                <div>
+                  <h3 className="fw-bold m-0">{solicitudActiva.mascotaNombre}</h3>
+                  <p className="text-muted m-0">Habitación: <strong>{solicitudActiva.habitacion}</strong></p>
+                </div>
+                <Badge bg={colorSocializacion(solicitudActiva.nivelSocializacion)} className="d-flex align-items-center px-3" style={{fontSize: '14px'}}>{solicitudActiva.nivelSocializacion}</Badge>
+              </div>
+
+              <Row className="mb-4">
+                <Col md={12}>
+                  <div className="p-3 rounded border" style={{backgroundColor: '#FFFBEB'}}>
+                    <h6 className="fw-bold text-warning-emphasis mb-2 d-flex align-items-center gap-1"><IoRestaurant/> ALIMENTACIÓN DIARIA</h6>
+                    <p className="m-0 text-dark">{solicitudActiva.guiaAlimentacion}</p>
+                  </div>
+                </Col>
+              </Row>
+              <Row className="mb-4">
+                 <Col md={12}>
+                  <div className="p-3 bg-light rounded border">
+                    <h6 className="fw-bold text-muted mb-2">PERTENENCIAS Y NOTAS</h6>
+                    <p className="m-0 text-dark">{solicitudActiva.pertenencias || 'Sin pertenencias registradas.'}</p>
+                  </div>
+                </Col>
+              </Row>
+
+              <div className="d-flex justify-content-between align-items-center pt-3 border-top">
+                <button onClick={() => { deleteDoc(doc(db, 'hospedaje', solicitudActiva.id)); setShowModalFicha(false); }} className="btn btn-outline-danger d-flex align-items-center gap-2 border-0">
+                  <IoTrash /> Borrar Registro
+                </button>
+                <button onClick={() => darDeAlta(solicitudActiva.id)} className="btn btn-dark fw-bold px-4 py-2 d-flex align-items-center gap-2">
+                  <IoCheckmarkDone size={20} /> Entregar Mascota (Check-out)
+                </button>
+              </div>
+            </div>
+          )}
         </Modal.Body>
       </Modal>
     </div>

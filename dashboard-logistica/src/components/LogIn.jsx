@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Form, Spinner } from 'react-bootstrap';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase'; // Importamos tu conexión de auth
+import { auth } from '../firebase';
+import { IoPaw } from 'react-icons/io5'; // <-- Importamos Ionicons
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -15,9 +16,7 @@ export default function Login() {
     setCargando(true);
 
     try {
-      // Intentamos iniciar sesión con Firebase
       await signInWithEmailAndPassword(auth, email, password);
-      // Si es exitoso, Firebase avisará automáticamente a App.jsx y la pantalla cambiará
     } catch (err) {
       console.error(err);
       setError('Credenciales incorrectas o usuario no encontrado.');
@@ -30,8 +29,8 @@ export default function Login() {
       <div className="glass-card shadow-lg" style={{ maxWidth: '450px', width: '100%', padding: '50px 40px' }}>
         
         <div className="text-center mb-5">
-          <div style={{fontSize: '48px', color: 'var(--accent)'}}>🐾</div>
-          <h2 className="fw-bold mt-2" style={{color: 'var(--text-dark)'}}>Moctezuma Center</h2>
+          <IoPaw size={54} color="var(--accent)" /> {/* <-- Ícono vectorial */}
+          <h2 className="fw-bold mt-3" style={{color: 'var(--text-dark)'}}>Moctezuma Center</h2>
           <p className="text-muted">Acceso exclusivo para personal</p>
         </div>
 
