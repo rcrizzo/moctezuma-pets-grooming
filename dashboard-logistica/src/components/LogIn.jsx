@@ -30,7 +30,7 @@ export default function Login() {
         
         <div className="text-center mb-5">
           <IoPaw size={54} color="var(--accent)" /> {/* <-- Ícono vectorial */}
-          <h2 className="fw-bold mt-3" style={{color: 'var(--text-dark)'}}>Moctezuma Center</h2>
+          <h2 className="fw-bold mt-3" style={{color: 'var(--text-dark)'}}>Moctezuma Pet's Grooming</h2>
           <p className="text-muted">Acceso exclusivo para personal</p>
         </div>
 

@@ -9,7 +9,7 @@ import { IoSearch, IoPaw, IoPencil, IoTrash } from 'react-icons/io5';
 const RAZAS_COMUNES = [
   'Mestizo / Criollo', 'Husky Siberiano', 'Golden Retriever', 'Labrador', 
   'Poodle (Caniche)', 'Pug', 'Bulldog Francés', 'Bulldog Inglés', 
-  'Chihuahua', 'Pastor Alemán', 'Bichón Frisé', 'Terrier Escocés', 'Gato Doméstico', 'Gato Persa', 'Otro'
+  'Chihuahua', 'Pastor Alemán', 'Bichón Frisé', 'Terrier Escocés', 'Gato Doméstico', 'Gato Persa', 'Golden Retriever', 'Otro'
 ];
 
 const ETIQUETAS_DISPONIBLES = [

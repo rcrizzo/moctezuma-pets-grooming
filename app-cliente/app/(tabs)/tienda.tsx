@@ -1,24 +1,55 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../../firebase'; // <-- Asegúrate de que la ruta a tu firebase.ts sea correcta
 
 export default function TiendaScreen() {
-  const ProductCard = ({ id, name, price, category }: { id: string, name: string, price: string, category: string }) => (
+  const [productos, setProductos] = useState<any[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  // --- CONEXIÓN A FIREBASE EN TIEMPO REAL ---
+  useEffect(() => {
+    const q = query(collection(db, 'inventario'), orderBy('nombre', 'asc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const lista = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setProductos(lista);
+      setCargando(false);
+    });
+
+    return () => unsub(); // Limpiamos la escucha al salir de la pantalla
+  }, []);
+
+  // --- COMPONENTE DE TARJETA ADAPTADO A FIREBASE ---
+  const ProductCard = ({ id, name, price, category, stock }: { id: string, name: string, price: number, category: string, stock: number }) => (
     <TouchableOpacity 
-      style={styles.productCard} 
-      onPress={() => router.push(`../producto/${id}`)}
+      style={[styles.productCard, stock <= 0 && { opacity: 0.6 }]} // Se opaca si no hay stock
+      onPress={() => stock > 0 ? router.push(`../producto/${id}`) : null}
+      activeOpacity={stock > 0 ? 0.2 : 1}
     >
       <View style={styles.productImagePlaceholder}>
-        <Ionicons name="image-outline" size={40} color="#CBD5E1" />
+        <Ionicons name="cube-outline" size={40} color="#CBD5E1" />
       </View>
-      <Text style={styles.productCategory}>{category}</Text>
-      <Text style={styles.productName}>{name}</Text>
+      <Text style={styles.productCategory}>{category.toUpperCase()}</Text>
+      <Text style={styles.productName} numberOfLines={2}>{name}</Text>
+      
       <View style={styles.productFooter}>
-        <Text style={styles.productPrice}>{price}</Text>
-        <View style={styles.addButton}>
-          <Ionicons name="chevron-forward" size={18} color="white" />
-        </View>
+        <Text style={styles.productPrice}>${price}</Text>
+        
+        {stock > 0 ? (
+          <View style={styles.addButton}>
+            <Ionicons name="chevron-forward" size={18} color="white" />
+          </View>
+        ) : (
+          <View style={[styles.addButton, { backgroundColor: '#EF4444', width: 'auto', paddingHorizontal: 8 }]}>
+            <Text style={{color: 'white', fontSize: 10, fontWeight: 'bold'}}>AGOTADO</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -34,18 +65,38 @@ export default function TiendaScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.productsGrid}>
-          <ProductCard id="1" name="Croquetas Premium Adulto" price="$850.00" category="ALIMENTO" />
-          <ProductCard id="2" name="Shampoo Antipulgas" price="$210.00" category="HIGIENE" />
-          <ProductCard id="3" name="Correa de Piel Gold" price="$340.00" category="ACCESORIOS" />
-          <ProductCard id="4" name="Snacks Dentales" price="$120.00" category="ALIMENTO" />
-        </ScrollView>
+        {cargando ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#D97706" />
+            <Text style={{ marginTop: 10, color: '#64748B' }}>Cargando catálogo...</Text>
+          </View>
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.productsGrid}>
+            {productos.map((prod) => (
+              <ProductCard 
+                key={prod.id} 
+                id={prod.id} 
+                name={prod.nombre} 
+                // AQUÍ ESTÁ EL TRUCO: Le decimos que busque cualquiera de estos nombres
+                price={prod.precioVenta || prod.precio || prod.costo || 0} 
+                category={prod.categoria || 'Sin Categoría'} 
+                stock={prod.stock || 0}
+              />
+            ))}
+            {productos.length === 0 && (
+              <Text style={{ width: '100%', textAlign: 'center', color: '#94A3B8', marginTop: 20 }}>
+                No hay productos disponibles por el momento.
+              </Text>
+            )}
+          </ScrollView>
+        )}
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  // Tus estilos se mantienen EXACTAMENTE iguales
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
   container: { flex: 1, paddingHorizontal: 25, paddingTop: 30 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
@@ -60,5 +111,5 @@ const styles = StyleSheet.create({
   productName: { fontSize: 14, fontWeight: '700', color: '#0F172A', height: 40 },
   productFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   productPrice: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  addButton: { width: 32, height: 32, backgroundColor: '#0F172A', borderRadius: 10, alignItems: 'center', justifyContent: 'center' }
+  addButton: { height: 32, backgroundColor: '#0F172A', borderRadius: 10, alignItems: 'center', justifyContent: 'center', minWidth: 32 }
 });
