@@ -1,316 +1,387 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Row, Col, Spinner, Badge, Modal } from 'react-bootstrap';
-// 1. IMPORTANTE: Agregamos deleteDoc a Firebase
-import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-// 2. Agregamos el ícono IoTrash
-import { IoSearch, IoPaw, IoPencil, IoTrash } from 'react-icons/io5';
+import { 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  query, 
+  doc, 
+  updateDoc, 
+  deleteDoc 
+} from 'firebase/firestore';
+import { 
+  Form, 
+  Button, 
+  Row, 
+  Col, 
+  Card, 
+  Badge, 
+  Modal, 
+  InputGroup 
+} from 'react-bootstrap';
+import { IoSearch, IoPaw, IoCreate, IoTrash, IoFitness, IoColorWand } from 'react-icons/io5';
 
-const RAZAS_COMUNES = [
-  'Mestizo / Criollo', 'Husky Siberiano', 'Golden Retriever', 'Labrador', 
-  'Poodle (Caniche)', 'Pug', 'Bulldog Francés', 'Bulldog Inglés', 
-  'Chihuahua', 'Pastor Alemán', 'Bichón Frisé', 'Terrier Escocés', 'Gato Doméstico', 'Gato Persa', 'Golden Retriever', 'Otro'
-];
-
-const ETIQUETAS_DISPONIBLES = [
-  'Tranquilo', 'Nervioso', 'Agresivo', 'Pelo Largo', 'Pelo Corto', 
-  'Alergias', 'Geriátrico', 'Requiere Bozal'
-];
-
-export default function Mascotas() {
-  const [clientes, setClientes] = useState([]);
+const Mascotas = () => {
   const [mascotas, setMascotas] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [guardando, setGuardando] = useState(false);
+  const [clientes, setClientes] = useState([]);
   const [busqueda, setBusqueda] = useState('');
+  const [showEdit, setShowEdit] = useState(false);
+  const [perfilAEditar, setPerfilAEditar] = useState(null);
 
+  // Estado del formulario de registro
   const [nuevaMascota, setNuevaMascota] = useState({
-    dueñoId: '', dueñoNombre: '', nombre: '', raza: '', notas: [] 
+    nombre: '',
+    duenoId: '',
+    duenoNombre: '',
+    raza: '',
+    talla: 'Mediano', // Mini, Chico, Mediano, Grande, Gigante
+    tipoPelo: 'Pelo Corto', // Pelo Corto, Pelo Largo
+    peso: '',
+    etiquetas: []
   });
 
-  const [showModalEdit, setShowModalEdit] = useState(false);
-  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
-  const [mascotaEditando, setMascotaEditando] = useState(null);
+  const etiquetasDisponibles = [
+    'Tranquilo', 'Nervioso', 'Agresivo', 'Pelo Largo', 
+    'Pelo Corto', 'Alergias', 'Geriátrico', 'Requiere Bozal', 'Discapacidad'
+  ];
+
+  const tallasDisponibles = ['Mini', 'Chico', 'Mediano', 'Grande', 'Gigante'];
 
   useEffect(() => {
-    const qClientes = query(collection(db, 'clientes'));
-    const unsubscribeClientes = onSnapshot(qClientes, (snapshot) => {
+    // Escuchar mascotas
+    const qMascotas = query(collection(db, "mascotas"));
+    const unsubMascotas = onSnapshot(qMascotas, (snapshot) => {
+      setMascotas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // Escuchar clientes para el select
+    const qClientes = query(collection(db, "clientes"));
+    const unsubClientes = onSnapshot(qClientes, (snapshot) => {
       setClientes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const qMascotas = query(collection(db, 'mascotas'));
-    const unsubscribeMascotas = onSnapshot(qMascotas, (snapshot) => {
-      setMascotas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setCargando(false);
-    });
-
-    return () => { unsubscribeClientes(); unsubscribeMascotas(); };
+    return () => {
+      unsubMascotas();
+      unsubClientes();
+    };
   }, []);
 
-  const toggleEtiqueta = (etiqueta, esEdicion = false) => {
-    if (esEdicion) {
-      const notasActuales = mascotaEditando.notas || [];
-      const nuevasNotas = notasActuales.includes(etiqueta)
-        ? notasActuales.filter(t => t !== etiqueta)
-        : [...notasActuales, etiqueta];
-      setMascotaEditando({ ...mascotaEditando, notas: nuevasNotas });
-    } else {
-      const nuevasNotas = nuevaMascota.notas.includes(etiqueta)
-        ? nuevaMascota.notas.filter(t => t !== etiqueta)
-        : [...nuevaMascota.notas, etiqueta];
-      setNuevaMascota({ ...nuevaMascota, notas: nuevasNotas });
-    }
-  };
-
-  const handleChangeCrear = (e) => {
-    const { name, value } = e.target;
-    if (name === 'dueñoId') {
-      const clienteSeleccionado = clientes.find(c => c.id === value);
-      setNuevaMascota({ ...nuevaMascota, dueñoId: value, dueñoNombre: clienteSeleccionado ? clienteSeleccionado.nombre : '' });
-    } else {
-      setNuevaMascota({ ...nuevaMascota, [name]: value });
-    }
-  };
-
-  const handleCrear = async (e) => {
+  const handleGuardarMascota = async (e) => {
     e.preventDefault();
-    if (!nuevaMascota.dueñoId) return alert("Selecciona un dueño.");
-    setGuardando(true);
-    try {
-      await addDoc(collection(db, 'mascotas'), nuevaMascota);
-      setNuevaMascota({ dueñoId: '', dueñoNombre: '', nombre: '', raza: '', notas: [] });
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setGuardando(false);
-    }
-  };
+    if (!nuevaMascota.nombre || !nuevaMascota.duenoId) return alert("Nombre y Dueño son obligatorios");
 
-  const abrirModalEdicion = (mascota) => {
-    const notasArray = Array.isArray(mascota.notas) ? mascota.notas : (mascota.notas ? mascota.notas.split(',') : []);
-    setMascotaEditando({ ...mascota, notas: notasArray });
-    setShowModalEdit(true);
-  };
-
-  const handleEditar = async (e) => {
-    e.preventDefault();
-    setGuardandoEdicion(true);
     try {
-      const mascotaRef = doc(db, 'mascotas', mascotaEditando.id);
-      await updateDoc(mascotaRef, {
-        nombre: mascotaEditando.nombre,
-        raza: mascotaEditando.raza,
-        notas: mascotaEditando.notas
+      await addDoc(collection(db, "mascotas"), {
+        ...nuevaMascota,
+        peso: parseFloat(nuevaMascota.peso) || 0,
+        fechaRegistro: new Date().toISOString()
       });
-      setShowModalEdit(false);
+      setNuevaMascota({ nombre: '', duenoId: '', duenoNombre: '', raza: '', talla: 'Mediano', tipoPelo: 'Pelo Corto', peso: '', etiquetas: [] });
     } catch (error) {
-      console.error("Error actualizando: ", error);
-    } finally {
-      setGuardandoEdicion(false);
+      console.error("Error al registrar mascota:", error);
     }
   };
 
-  // --- NUEVA FUNCIÓN: ELIMINAR MASCOTA ---
-  const handleEliminar = async () => {
-    // Pedimos confirmación nativa del navegador por seguridad
-    const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar el perfil de ${mascotaEditando.nombre}? Esta acción no se puede deshacer.`);
-    
-    if (confirmar) {
-      setGuardandoEdicion(true);
-      try {
-        await deleteDoc(doc(db, 'mascotas', mascotaEditando.id));
-        setShowModalEdit(false);
-      } catch (error) {
-        console.error("Error al eliminar la mascota: ", error);
-      } finally {
-        setGuardandoEdicion(false);
-      }
+  const handleActualizarMascota = async () => {
+    try {
+      const docRef = doc(db, "mascotas", perfilAEditar.id);
+      await updateDoc(docRef, {
+        ...perfilAEditar,
+        peso: parseFloat(perfilAEditar.peso) || 0
+      });
+      setShowEdit(false);
+    } catch (error) {
+      console.error("Error al actualizar:", error);
     }
   };
 
-  const mascotasFiltradas = mascotas.filter(m => 
+  const toggleEtiqueta = (tag, isEdit = false) => {
+    if (isEdit) {
+      const tags = perfilAEditar.etiquetas.includes(tag)
+        ? perfilAEditar.etiquetas.filter(t => t !== tag)
+        : [...perfilAEditar.etiquetas, tag];
+      setPerfilAEditar({ ...perfilAEditar, etiquetas: tags });
+    } else {
+      const tags = nuevaMascota.etiquetas.includes(tag)
+        ? nuevaMascota.etiquetas.filter(t => t !== tag)
+        : [...nuevaMascota.etiquetas, tag];
+      setNuevaMascota({ ...nuevaMascota, etiquetas: tags });
+    }
+  };
+
+  const filteredMascotas = mascotas.filter(m => 
     m.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
-    (m.dueñoNombre && m.dueñoNombre.toLowerCase().includes(busqueda.toLowerCase()))
+    m.duenoNombre.toLowerCase().includes(busqueda.toLowerCase())
   );
 
   return (
-    <Row className="gx-4">
-      <Col md={5} lg={4}>
-        <div className="glass-card p-4 h-100">
-          <h4 className="fw-bold mb-1" style={{fontSize: '18px'}}>Registro de Perfil</h4>
-          <p className="text-muted mb-4" style={{fontSize: '13px'}}>Añade una nueva mascota al sistema.</p>
-          
-          <Form onSubmit={handleCrear}>
-            <Form.Group className="mb-3">
-              <Form.Label className="custom-label">Dueño (Cliente)</Form.Label>
-              <Form.Select name="dueñoId" value={nuevaMascota.dueñoId} onChange={handleChangeCrear} className="custom-input" required>
-                <option value="">Selecciona un cliente...</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </Form.Select>
-            </Form.Group>
+    <div className="animate-fade-in">
+      <Row className="g-4">
+        {/* FORMULARIO DE REGISTRO */}
+        <Col lg={4}>
+          <div className="glass-card p-4">
+            <h4 className="fw-bold mb-1">Registro de Perfil</h4>
+            <p className="text-muted small mb-4">Añade una nueva mascota al sistema con sus detalles logísticos.</p>
 
-            <Form.Group className="mb-3">
-              <Form.Label className="custom-label">Nombre</Form.Label>
-              <Form.Control type="text" name="nombre" value={nuevaMascota.nombre} onChange={handleChangeCrear} placeholder="Ej. Rocky" className="custom-input" required />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label className="custom-label">Raza</Form.Label>
-              <Form.Select name="raza" value={nuevaMascota.raza} onChange={handleChangeCrear} className="custom-input" required>
-                <option value="">Selecciona raza...</option>
-                {RAZAS_COMUNES.map(raza => <option key={raza} value={raza}>{raza}</option>)}
-              </Form.Select>
-            </Form.Group>
-
-            <Form.Group className="mb-4">
-              <Form.Label className="custom-label mb-2">Etiquetas de Comportamiento</Form.Label>
-              <div className="d-flex flex-wrap gap-2">
-                {ETIQUETAS_DISPONIBLES.map(tag => {
-                  const isSelected = nuevaMascota.notas.includes(tag);
-                  return (
-                    <Badge 
-                      key={tag} 
-                      bg={isSelected ? 'warning' : 'light'} 
-                      text={isSelected ? 'dark' : 'secondary'}
-                      className="border"
-                      style={{ cursor: 'pointer', padding: '6px 10px', fontWeight: isSelected ? '700' : '500' }}
-                      onClick={() => toggleEtiqueta(tag, false)}
-                    >
-                      {tag}
-                    </Badge>
-                  );
-                })}
-              </div>
-            </Form.Group>
-
-            <button type="submit" className="btn w-100 py-3 fw-bold text-white mt-2 d-flex justify-content-center align-items-center gap-2" style={{ backgroundColor: 'var(--accent)', borderRadius: '10px' }} disabled={guardando}>
-              {guardando ? <Spinner size="sm" /> : 'Guardar Perfil'}
-            </button>
-          </Form>
-        </div>
-      </Col>
-
-      <Col md={7} lg={8}>
-        <div className="glass-card p-4 p-md-5 h-100">
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <h4 className="fw-bold m-0" style={{fontSize: '18px'}}>Base de Datos</h4>
-            <div className="position-relative">
-              <IoSearch className="position-absolute" style={{left: '12px', top: '15px', color: '#94A3B8'}} />
-              <Form.Control type="text" placeholder="Buscar..." className="custom-input" style={{ width: '250px', paddingLeft: '35px' }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
-            </div>
-          </div>
-
-          {cargando ? (
-            <div className="text-center py-5"><Spinner animation="border" style={{color: 'var(--accent)'}} /></div>
-          ) : (
-            <Row className="gy-3">
-              {mascotasFiltradas.map((mascota) => {
-                const notasArray = Array.isArray(mascota.notas) ? mascota.notas : (mascota.notas ? mascota.notas.split(',') : []);
-                
-                return (
-                  <Col md={6} key={mascota.id}>
-                    <div className="p-3 rounded-3" style={{ border: '1px solid var(--border-light)' }}>
-                      <div className="d-flex gap-3">
-                        <div style={{width: '50px', height: '50px', borderRadius: '50%', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                          <IoPaw size={24} color="#64748B" />
-                        </div>
-                        <div>
-                          <h5 className="fw-bold m-0" style={{fontSize: '15px'}}>{mascota.nombre}</h5>
-                          <p className="text-muted m-0" style={{fontSize: '13px'}}>{mascota.raza} • Dueño: {mascota.dueñoNombre}</p>
-                          <div className="mt-2 d-flex flex-wrap gap-1">
-                            {notasArray.map((nota, index) => (
-                              <Badge key={index} bg="light" text="dark" className="border" style={{fontSize: '10px'}}>{nota.trim()}</Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-3 pt-3 border-top d-flex justify-content-between">
-                        <button onClick={() => abrirModalEdicion(mascota)} className="btn btn-sm fw-bold text-muted d-flex align-items-center gap-1" style={{fontSize: '12px'}}>
-                          <IoPencil /> Editar Datos
-                        </button>
-                        <button className="btn btn-sm fw-bold" style={{color: 'var(--accent)', fontSize: '12px'}}>Ver Carnet</button>
-                      </div>
-                    </div>
-                  </Col>
-                );
-              })}
-              {mascotasFiltradas.length === 0 && <div className="text-center py-5 text-muted w-100">No se encontraron mascotas.</div>}
-            </Row>
-          )}
-        </div>
-      </Col>
-
-      <Modal show={showModalEdit} onHide={() => setShowModalEdit(false)} centered>
-        <Modal.Header closeButton style={{ borderBottom: '1px solid var(--border-light)' }}>
-          <Modal.Title className="fw-bold d-flex align-items-center gap-2" style={{ fontSize: '18px' }}>
-            <IoPencil color="var(--accent)" /> Editar Perfil de Mascota
-          </Modal.Title>
-        </Modal.Header>
-        {mascotaEditando && (
-          <Modal.Body className="p-4">
-            <Form onSubmit={handleEditar}>
+            <Form onSubmit={handleGuardarMascota}>
               <Form.Group className="mb-3">
-                <Form.Label className="custom-label">Dueño (No editable)</Form.Label>
-                <Form.Control type="text" value={mascotaEditando.dueñoNombre} className="custom-input bg-light" disabled />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label className="custom-label">Nombre</Form.Label>
-                <Form.Control type="text" value={mascotaEditando.nombre} onChange={(e) => setMascotaEditando({...mascotaEditando, nombre: e.target.value})} className="custom-input" required />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label className="custom-label">Raza</Form.Label>
-                <Form.Select value={mascotaEditando.raza} onChange={(e) => setMascotaEditando({...mascotaEditando, raza: e.target.value})} className="custom-input" required>
-                  {RAZAS_COMUNES.map(raza => <option key={raza} value={raza}>{raza}</option>)}
+                <Form.Label className="custom-label">Dueño (Cliente)</Form.Label>
+                <Form.Select 
+                  className="custom-input"
+                  value={nuevaMascota.duenoId}
+                  onChange={(e) => {
+                    const selected = clientes.find(c => c.id === e.target.value);
+                    setNuevaMascota({...nuevaMascota, duenoId: e.target.value, duenoNombre: selected ? selected.nombre : ''});
+                  }}
+                >
+                  <option value="">Selecciona un cliente...</option>
+                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </Form.Select>
               </Form.Group>
 
+              <Form.Group className="mb-3">
+                <Form.Label className="custom-label">Nombre de la Mascota</Form.Label>
+                <Form.Control 
+                  className="custom-input"
+                  placeholder="Ej. Rocky"
+                  value={nuevaMascota.nombre}
+                  onChange={(e) => setNuevaMascota({...nuevaMascota, nombre: e.target.value})}
+                />
+              </Form.Group>
+
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Talla / Tamaño</Form.Label>
+                    <Form.Select 
+                      className="custom-input"
+                      value={nuevaMascota.talla}
+                      onChange={(e) => setNuevaMascota({...nuevaMascota, talla: e.target.value})}
+                    >
+                      {tallasDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Tipo de Pelo</Form.Label>
+                    <Form.Select 
+                      className="custom-input"
+                      value={nuevaMascota.tipoPelo}
+                      onChange={(e) => setNuevaMascota({...nuevaMascota, tipoPelo: e.target.value})}
+                    >
+                      <option value="Pelo Corto">Pelo Corto</option>
+                      <option value="Pelo Largo">Pelo Largo</option>
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+              </Row>
+
+              <Form.Group className="mb-3">
+                <Form.Label className="custom-label">Peso Actual (Kg)</Form.Label>
+                <InputGroup>
+                  <Form.Control 
+                    type="number"
+                    step="0.1"
+                    className="custom-input"
+                    placeholder="0.0"
+                    value={nuevaMascota.peso}
+                    onChange={(e) => setNuevaMascota({...nuevaMascota, peso: e.target.value})}
+                  />
+                  <InputGroup.Text style={{backgroundColor: 'white', borderRadius: '0 10px 10px 0', borderLeft: 'none'}}>kg</InputGroup.Text>
+                </InputGroup>
+              </Form.Group>
+
               <Form.Group className="mb-4">
-                <Form.Label className="custom-label mb-2">Etiquetas</Form.Label>
+                <Form.Label className="custom-label">Etiquetas de Comportamiento</Form.Label>
                 <div className="d-flex flex-wrap gap-2">
-                  {ETIQUETAS_DISPONIBLES.map(tag => {
-                    const isSelected = (mascotaEditando.notas || []).includes(tag);
-                    return (
-                      <Badge 
-                        key={tag} 
-                        bg={isSelected ? 'warning' : 'light'} 
-                        text={isSelected ? 'dark' : 'secondary'}
-                        className="border"
-                        style={{ cursor: 'pointer', padding: '6px 10px', fontWeight: isSelected ? '700' : '500' }}
-                        onClick={() => toggleEtiqueta(tag, true)}
-                      >
-                        {tag}
-                      </Badge>
-                    );
-                  })}
+                  {etiquetasDisponibles.map(tag => (
+                    <Badge 
+                      key={tag}
+                      bg={nuevaMascota.etiquetas.includes(tag) ? "warning" : "light"}
+                      text={nuevaMascota.etiquetas.includes(tag) ? "white" : "dark"}
+                      className="p-2 cursor-pointer border"
+                      style={{ cursor: 'pointer', fontWeight: '500' }}
+                      onClick={() => toggleEtiqueta(tag)}
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
                 </div>
               </Form.Group>
 
-              {/* FOOTER DEL MODAL ACTUALIZADO CON BOTÓN ELIMINAR */}
-              <div className="d-flex justify-content-between align-items-center mt-4">
-                <button 
-                  type="button" 
-                  onClick={handleEliminar} 
-                  className="btn text-danger fw-bold d-flex align-items-center gap-1 px-3" 
-                  disabled={guardandoEdicion}
-                  style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}
-                >
-                  <IoTrash /> Eliminar
-                </button>
-                
-                <div className="d-flex gap-2">
-                  <button type="button" onClick={() => setShowModalEdit(false)} className="btn text-muted fw-bold" disabled={guardandoEdicion}>Cancelar</button>
-                  <button type="submit" className="btn fw-bold text-white" style={{ backgroundColor: 'var(--accent)', borderRadius: '8px' }} disabled={guardandoEdicion}>
-                    {guardandoEdicion ? <Spinner size="sm" /> : 'Actualizar'}
-                  </button>
+              <Button type="submit" className="w-100 fw-bold py-3" style={{backgroundColor: 'var(--accent)', border: 'none', borderRadius: '12px'}}>
+                Guardar Perfil
+              </Button>
+            </Form>
+          </div>
+        </Col>
+
+        {/* LISTADO DE MASCOTAS */}
+        <Col lg={8}>
+          <div className="d-flex justify-content-between align-items-center mb-4">
+            <h3 className="fw-bold m-0">Base de Datos</h3>
+            <div className="position-relative" style={{width: '300px'}}>
+              <IoSearch className="position-absolute" style={{top: '14px', left: '16px', color: 'var(--text-muted)'}} />
+              <Form.Control 
+                className="custom-input ps-5"
+                placeholder="Buscar mascota o dueño..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Row className="g-3">
+            {filteredMascotas.map(m => (
+              <Col md={6} key={m.id}>
+                <Card className="glass-card border-0 h-100 shadow-sm hover-up">
+                  <Card.Body className="p-4">
+                    <div className="d-flex align-items-start justify-content-between mb-3">
+                      <div className="d-flex align-items-center gap-3">
+                        <div className="bg-light p-3 rounded-circle text-muted">
+                          <IoPaw size={24} />
+                        </div>
+                        <div>
+                          <h5 className="fw-bold m-0">{m.nombre}</h5>
+                          <p className="text-muted small m-0">Dueño: {m.duenoNombre}</p>
+                        </div>
+                      </div>
+                      <Badge bg="info" className="p-2">{m.talla}</Badge>
+                    </div>
+
+                    <div className="mb-3 d-flex gap-3 text-muted small">
+                       <span><IoFitness /> {m.peso || 0} kg</span>
+                       <span><IoColorWand /> {m.tipoPelo}</span>
+                    </div>
+
+                    <div className="d-flex flex-wrap gap-1 mb-4">
+                      {m.etiquetas?.map(tag => (
+                        <Badge key={tag} bg="light" text="dark" className="fw-normal border" style={{fontSize: '10px'}}>
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <div className="d-flex gap-2 pt-3 border-top">
+                      <Button 
+                        variant="link" 
+                        className="p-0 text-warning text-decoration-none fw-bold small"
+                        onClick={() => { setPerfilAEditar(m); setShowEdit(true); }}
+                      >
+                        <IoCreate className="me-1" /> Editar Datos
+                      </Button>
+                      <Button 
+                        variant="link" 
+                        className="p-0 text-danger text-decoration-none fw-bold ms-auto small"
+                        onClick={async () => { if(confirm("¿Eliminar perfil?")) await deleteDoc(doc(db, "mascotas", m.id)); }}
+                      >
+                        <IoTrash />
+                      </Button>
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </Col>
+      </Row>
+
+      {/* MODAL DE EDICIÓN */}
+      <Modal show={showEdit} onHide={() => setShowEdit(false)} centered size="md">
+        <Modal.Header closeButton className="border-0 pb-0">
+          <Modal.Title className="fw-bold">Editar Perfil de Mascota</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-4">
+          {perfilAEditar && (
+            <Form>
+              <Form.Group className="mb-3">
+                <Form.Label className="custom-label">Dueño (No editable)</Form.Label>
+                <Form.Control className="custom-input bg-light" value={perfilAEditar.duenoNombre} disabled />
+              </Form.Group>
+
+              <Row>
+                <Col md={8}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Nombre</Form.Label>
+                    <Form.Control 
+                      className="custom-input"
+                      value={perfilAEditar.nombre}
+                      onChange={(e) => setPerfilAEditar({...perfilAEditar, nombre: e.target.value})}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={4}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Peso (kg)</Form.Label>
+                    <Form.Control 
+                      type="number"
+                      step="0.1"
+                      className="custom-input"
+                      value={perfilAEditar.peso}
+                      onChange={(e) => setPerfilAEditar({...perfilAEditar, peso: e.target.value})}
+                    />
+                  </Form.Group>
+                </Col>
+              </Row>
+
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Talla</Form.Label>
+                    <Form.Select 
+                      className="custom-input"
+                      value={perfilAEditar.talla}
+                      onChange={(e) => setPerfilAEditar({...perfilAEditar, talla: e.target.value})}
+                    >
+                      {tallasDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Tipo de Pelo</Form.Label>
+                    <Form.Select 
+                      className="custom-input"
+                      value={perfilAEditar.tipoPelo}
+                      onChange={(e) => setPerfilAEditar({...perfilAEditar, tipoPelo: e.target.value})}
+                    >
+                      <option value="Pelo Corto">Pelo Corto</option>
+                      <option value="Pelo Largo">Pelo Largo</option>
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+              </Row>
+
+              <Form.Group className="mb-4">
+                <Form.Label className="custom-label">Etiquetas</Form.Label>
+                <div className="d-flex flex-wrap gap-2">
+                  {etiquetasDisponibles.map(tag => (
+                    <Badge 
+                      key={tag}
+                      bg={perfilAEditar.etiquetas.includes(tag) ? "warning" : "light"}
+                      text={perfilAEditar.etiquetas.includes(tag) ? "white" : "dark"}
+                      className="p-2 cursor-pointer border"
+                      onClick={() => toggleEtiqueta(tag, true)}
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
                 </div>
+              </Form.Group>
+
+              <div className="d-flex gap-2">
+                <Button variant="outline-danger" className="fw-bold px-4 border-0" onClick={() => setShowEdit(false)}>Cancelar</Button>
+                <Button className="ms-auto fw-bold px-4" style={{backgroundColor: 'var(--accent)', border: 'none'}} onClick={handleActualizarMascota}>
+                  Actualizar Perfil
+                </Button>
               </div>
             </Form>
-          </Modal.Body>
-        )}
+          )}
+        </Modal.Body>
       </Modal>
-
-    </Row>
+    </div>
   );
-}
+};
+
+export default Mascotas;

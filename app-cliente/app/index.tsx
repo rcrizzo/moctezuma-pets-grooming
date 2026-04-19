@@ -8,7 +8,7 @@ export default function LoginScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.logoContainer}><Text style={styles.logoText}>🐾</Text></View>
-          <Text style={styles.title}>Moctezuma</Text>
+          <Text style={styles.title}>Moctezuma Pet's Grooming</Text>
           <Text style={styles.subtitle}>Inicia sesión para gestionar las citas de tu mascota.</Text>
         </View>
 
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', marginBottom: 50 },
   logoContainer: { width: 80, height: 80, backgroundColor: '#FEF3C7', borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16, borderWidth: 2, borderColor: '#FDE68A' },
   logoText: { fontSize: 44, color: '#D97706' },
-  title: { fontSize: 32, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  title: { fontSize: 32, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5, textAlign: 'center' },
   subtitle: { color: '#64748B', marginTop: 10, textAlign: 'center', lineHeight: 22 },
   formContainer: { gap: 24, width: '100%' },
   inputGroup: { gap: 10 },

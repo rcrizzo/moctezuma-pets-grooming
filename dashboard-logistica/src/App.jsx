@@ -56,7 +56,7 @@ function App() {
         <div className="px-4 mb-4 d-flex align-items-center gap-3">
           <IoPaw size={28} color="var(--accent)" />
           <h1 className="m-0 text-white fw-bold" style={{fontSize: '18px', letterSpacing: '0.5px'}}>
-            Moctezuma Center
+            Moctezuma Pet's Grooming
           </h1>
         </div>
 
