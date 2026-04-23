@@ -1,62 +1,142 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Spinner, Badge, ProgressBar } from 'react-bootstrap';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { Row, Col, Spinner, Badge, ProgressBar, Card, Button, ButtonGroup } from 'react-bootstrap';
+import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
   IoTrendingUp, IoPaw, IoCut, IoHome, IoAlertCircle, 
-  IoCalendarClear, IoNotifications, IoCart
+  IoCalendarClear, IoNotifications, IoCart, IoChevronBack, IoChevronForward, IoToday
 } from 'react-icons/io5';
 
+// Horarios de la jornada laboral (10 AM a 7 PM)
+const HORAS = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]; 
+const DIAS_TEXTO = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
 export default function Resumen() {
-  // --- ESTADOS PARA LOS KPIs ---
+  // --- ESTADOS PARA LOS KPIs ORIGINALES ---
   const [totalMascotas, setTotalMascotas] = useState(0);
   const [alertasInventario, setAlertasInventario] = useState([]);
   const [huespedesActivos, setHuespedesActivos] = useState(0);
-  const [citasHoy, setCitasHoy] = useState([]);
   const [turnosGrooming, setTurnosGrooming] = useState([]);
   const [cargando, setCargando] = useState(true);
 
-  // Fecha actual formateada
+  // --- ESTADOS PARA LA AGENDA SEMANAL ---
+  const [citasGrooming, setCitasGrooming] = useState([]);
+  const [citasVet, setCitasVet] = useState([]);
+  
+  const [lunesActual, setLunesActual] = useState(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
+  });
+
+  const cambiarSemana = (offset) => {
+    const nueva = new Date(lunesActual);
+    nueva.setDate(nueva.getDate() + offset);
+    setLunesActual(nueva);
+  };
+
+  const irAHoy = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    setLunesActual(new Date(d.setDate(diff)));
+  };
+
+  const obtenerDiasSemana = () => [0, 1, 2, 3, 4, 5].map(offset => {
+    const d = new Date(lunesActual);
+    d.setDate(d.getDate() + offset);
+    return d;
+  });
+
+  const dias = obtenerDiasSemana();
   const hoy = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const rangoTexto = `${dias[0].toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })} - ${dias[5].toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   useEffect(() => {
-    // 1. Escuchar Mascotas (Total de pacientes/clientes)
-    const unsubMascotas = onSnapshot(collection(db, 'mascotas'), (snap) => {
-      setTotalMascotas(snap.size); 
-    });
-
-    // 2. Escuchar Inventario (Alertas de stock crítico)
+    // 1. KPIs Globales
+    const unsubMascotas = onSnapshot(collection(db, 'mascotas'), (snap) => setTotalMascotas(snap.size));
     const unsubInventario = onSnapshot(collection(db, 'inventario'), (snap) => {
       const prods = snap.docs.map(doc => doc.data());
       setAlertasInventario(prods.filter(p => p.stock <= p.stockMinimo));
     });
-
-    // 3. Escuchar Hospedaje (Ocupación actual del hotel)
     const unsubHospedaje = onSnapshot(collection(db, 'hospedaje'), (snap) => {
       const estancias = snap.docs.map(doc => doc.data());
       setHuespedesActivos(estancias.filter(e => e.estado === 'Hospedado').length);
     });
-
-    // 4. Escuchar Consultas Veterinarias (Citas Pendientes de Triage/Agenda)
-    const qConsultas = query(collection(db, 'consultas'), orderBy('createdAt', 'desc'));
-    const unsubConsultas = onSnapshot(qConsultas, (snap) => {
-      const cons = snap.docs.map(doc => doc.data());
-      setCitasHoy(cons.filter(c => c.estado === 'Pendiente'));
-    });
-
-    // 5. Escuchar Grooming (Turnos de Estética activos)
-    const qGrooming = query(collection(db, 'grooming'), orderBy('createdAt', 'desc'));
-    const unsubGrooming = onSnapshot(qGrooming, (snap) => {
+    const qGroomingKPI = query(collection(db, 'grooming'), orderBy('fechaRegistro', 'desc'));
+    const unsubGroomingKPI = onSnapshot(qGroomingKPI, (snap) => {
       const turns = snap.docs.map(doc => doc.data());
       setTurnosGrooming(turns.filter(t => t.estado === 'Pendiente' || t.estado === 'En la Mesa (Proceso)'));
+    });
+
+    // 2. AGENDA SEMANAL: Escuchar ambas colecciones simultáneamente
+    const inicioSemana = new Date(lunesActual); inicioSemana.setHours(0, 0, 0, 0);
+    const finSemana = new Date(dias[5]); finSemana.setHours(23, 59, 59, 999);
+
+    // Consulta para Grooming
+    const qGroomingAgenda = query(
+      collection(db, 'grooming'),
+      where('fechaTimestamp', '>=', inicioSemana),
+      where('fechaTimestamp', '<=', finSemana)
+    );
+    const unsubGroomingAgenda = onSnapshot(qGroomingAgenda, (snap) => {
+      setCitasGrooming(snap.docs.map(doc => ({ id: doc.id, ...doc.data(), area: 'Grooming' })));
+    });
+
+    // Consulta para Veterinaria
+    const qConsultasAgenda = query(
+      collection(db, 'consultas'),
+      where('fechaTimestamp', '>=', inicioSemana),
+      where('fechaTimestamp', '<=', finSemana)
+    );
+    const unsubConsultasAgenda = onSnapshot(qConsultasAgenda, (snap) => {
+      setCitasVet(snap.docs.map(doc => ({ id: doc.id, ...doc.data(), area: 'Veterinaria' })));
       setCargando(false);
     });
 
-    // Limpieza de listeners al desmontar el componente
     return () => {
-      unsubMascotas(); unsubInventario(); unsubHospedaje(); unsubConsultas(); unsubGrooming();
+      unsubMascotas(); unsubInventario(); unsubHospedaje(); unsubGroomingKPI();
+      unsubGroomingAgenda(); unsubConsultasAgenda();
     };
-  }, []);
+  }, [lunesActual]);
+
+  // Unimos ambas listas de citas
+  const citasSemana = [...citasGrooming, ...citasVet];
+
+  // Función para renderizar la celda correcta
+  const renderCitasCelda = (fecha, hora) => {
+    const fechaString = fecha.toDateString();
+    
+    const citas = citasSemana.filter(c => {
+      // Manejo seguro por si Firebase lo devuelve como JS Date o Firestore Timestamp
+      const cDate = c.fechaTimestamp?.toDate ? c.fechaTimestamp.toDate() : new Date(c.fechaTimestamp);
+      return cDate?.toDateString() === fechaString && cDate?.getHours() === hora;
+    });
+
+    return (
+      <div className="d-flex flex-column gap-1 w-100 h-100 p-1">
+        {citas.map((cita) => (
+          <div 
+            key={cita.id} 
+            className="p-1 rounded shadow-sm text-truncate"
+            style={{ 
+              fontSize: '10px', 
+              backgroundColor: cita.area === 'Grooming' ? '#E0F2FE' : '#FEF3C7',
+              borderLeft: `3px solid ${cita.area === 'Grooming' ? '#0284C7' : '#D97706'}`,
+              color: '#1E293B',
+              lineHeight: '1.2'
+            }}
+            title={`${cita.mascotaNombre} - ${cita.servicio || cita.tipo}`}
+          >
+            <span className="fw-bold">{cita.mascotaNombre}</span>
+            <br />
+            <small className="text-muted" style={{fontSize: '9px'}}>{cita.area}</small>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   if (cargando) {
     return (
@@ -76,7 +156,7 @@ export default function Resumen() {
         </div>
       </div>
 
-      {/* --- TARJETAS DE KPIs --- */}
+      {/* --- TARJETAS DE KPIs (INTACTAS) --- */}
       <Row className="mb-4 gx-3 gy-3">
         <Col md={3}>
           <div className="glass-card p-4 h-100 d-flex flex-column justify-content-center" style={{borderTop: '4px solid #3B82F6'}}>
@@ -142,50 +222,56 @@ export default function Resumen() {
 
       {/* --- SECCIÓN DE OPERACIONES Y ALERTAS --- */}
       <Row className="gx-4 gy-4">
-        {/* COLUMNA IZQUIERDA: Agenda Operativa */}
+        {/* COLUMNA IZQUIERDA: AGENDA OPERATIVA SEMANAL (UNIFICADA) */}
         <Col lg={8}>
-          <div className="glass-card p-4 h-100">
-            <h5 className="fw-bold mb-4 d-flex align-items-center gap-2">
-              <IoCalendarClear color="var(--accent)" /> Agenda Operativa del Día
-            </h5>
-            
-            <h6 className="fw-bold text-muted small text-uppercase mb-3">Consultas Veterinarias (Triage / Pendientes)</h6>
-            {citasHoy.length > 0 ? (
-              <div className="d-flex flex-column gap-2 mb-4">
-                {citasHoy.slice(0, 4).map((cita, idx) => (
-                  <div key={idx} className="p-3 border rounded d-flex justify-content-between align-items-center" style={{backgroundColor: '#F8FAFC'}}>
-                    <div>
-                      <span className="fw-bold d-block text-dark">{cita.mascotaNombre} <Badge bg="primary" className="ms-1">{cita.tipo}</Badge></span>
-                      <small className="text-muted">Motivo: {cita.notas || cita.motivo || 'Revisión general'}</small>
-                    </div>
-                    <Badge bg="dark" className="px-3 py-2">{cita.horaCita || 'En espera'}</Badge>
-                  </div>
-                ))}
+          <div className="glass-card h-100 d-flex flex-column">
+            <div className="p-4 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-3 bg-white" style={{borderRadius: '15px 15px 0 0'}}>
+              <div>
+                <h5 className="fw-bold m-0 d-flex align-items-center gap-2">
+                  <IoCalendarClear color="var(--accent)" /> Agenda Logística Semanal
+                </h5>
+                <p className="text-muted small m-0 mt-1">{rangoTexto}</p>
               </div>
-            ) : (
-              <p className="text-muted small italic mb-4 p-3 bg-light rounded text-center">No hay consultas médicas en espera.</p>
-            )}
+              
+              <ButtonGroup shadow-sm>
+                <Button variant="outline-secondary" size="sm" onClick={() => cambiarSemana(-7)}><IoChevronBack /></Button>
+                <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={irAHoy}><IoToday className="me-1"/>Hoy</Button>
+                <Button variant="outline-secondary" size="sm" onClick={() => cambiarSemana(7)}><IoChevronForward /></Button>
+              </ButtonGroup>
+            </div>
 
-            <h6 className="fw-bold text-muted small text-uppercase mb-3 mt-4">Estética y Grooming</h6>
-            {turnosGrooming.length > 0 ? (
-              <div className="d-flex flex-column gap-2">
-                {turnosGrooming.slice(0, 4).map((turno, idx) => (
-                  <div key={idx} className="p-3 border rounded d-flex justify-content-between align-items-center" style={{backgroundColor: '#FFFBEB', borderColor: '#FDE68A'}}>
-                    <div>
-                      <span className="fw-bold d-block text-dark">{turno.mascotaNombre} <Badge bg="warning" text="dark" className="ms-1">{turno.servicio}</Badge></span>
-                      <small className="text-muted">Fase actual: <strong>{turno.estado}</strong></small>
+            <div className="p-0 overflow-auto bg-light flex-grow-1" style={{borderRadius: '0 0 15px 15px'}}>
+              <div style={{ minWidth: '800px' }}>
+                {/* Header Días */}
+                <div className="d-flex border-bottom bg-white sticky-top">
+                  <div style={{ width: '80px', flexShrink: 0 }} className="p-2 text-center fw-bold text-muted small border-end">HORA</div>
+                  {dias.map((dia, i) => (
+                    <div key={i} className="flex-grow-1 p-2 text-center border-end" style={{ width: 'calc(100% / 6)' }}>
+                      <span className="d-block fw-bold" style={{fontSize: '12px'}}>{DIAS_TEXTO[i]}</span>
+                      <small className="text-muted" style={{fontSize: '11px'}}>{dia.getDate()}</small>
                     </div>
-                    <span className="fw-bold text-muted small">{turno.horaCita}</span>
+                  ))}
+                </div>
+
+                {/* Cuerpo Agenda */}
+                {HORAS.map(hora => (
+                  <div key={hora} className="d-flex border-bottom align-items-stretch" style={{ minHeight: '80px' }}>
+                    <div style={{ width: '80px', flexShrink: 0 }} className="p-2 text-center border-end bg-white small fw-bold text-muted d-flex align-items-center justify-content-center">
+                      {hora === 12 ? '12:00 PM' : hora > 12 ? `${hora - 12}:00 PM` : `${hora}:00 AM`}
+                    </div>
+                    {dias.map((dia, i) => (
+                      <div key={i} className="flex-grow-1 border-end bg-white" style={{ width: 'calc(100% / 6)' }}>
+                        {renderCitasCelda(dia, hora)}
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="text-muted small italic p-3 bg-light rounded text-center">No hay turnos de estética activos en este momento.</p>
-            )}
+            </div>
           </div>
         </Col>
 
-        {/* COLUMNA DERECHA: Notificaciones de Logística */}
+        {/* COLUMNA DERECHA: Notificaciones de Logística (INTACTA) */}
         <Col lg={4}>
           <div className="glass-card p-4 h-100" style={{backgroundColor: '#FAFAFA'}}>
             <h5 className="fw-bold mb-4 d-flex align-items-center gap-2">

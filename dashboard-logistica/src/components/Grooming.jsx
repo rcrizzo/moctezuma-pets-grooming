@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Modal, Form, Table, Spinner, Badge, Card, Button } from 'react-bootstrap';
-import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { IoCut, IoSearch, IoAdd, IoEye, IoTime, IoWarning, IoCheckmarkCircle, IoCheckmarkDone, IoTrash, IoWater, IoCashOutline } from 'react-icons/io5';
+import { IoCut, IoSearch, IoAdd, IoEye, IoTime, IoWarning, IoCheckmarkCircle, IoCheckmarkDone, IoTrash, IoWater } from 'react-icons/io5';
 
 // --- CATÁLOGOS DE ESTÉTICA ---
 const SERVICIOS_GROOMING = [
   'Baño Básico', 'Baño Medicado', 'Corte de Pelo (Estilismo)', 
   'Deslanado', 'Corte de Uñas y Limpieza', 'Paquete Spa Completo'
 ];
-const HORARIOS = ['09:00 AM', '10:30 AM', '12:00 PM', '01:30 PM', '03:00 PM', '04:30 PM'];
+const HORARIOS = [
+  '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', 
+  '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', 
+  '06:00 PM', '07:00 PM'
+];
 
-// --- TABULADOR DE PRECIOS BASE (Fotografías del local) ---
+// --- TABULADOR DE PRECIOS BASE ---
 const PRECIOS_BASE = {
   'Pelo Largo': {
     'Mini': { 'Baño': 280, 'Grooming': 380 },
@@ -40,6 +44,7 @@ const NIVELES_NUDOS = [
 
 export default function Grooming() {
   const [mascotas, setMascotas] = useState([]);
+  const [dueños, setDueños] = useState([]); // Nuevo estado para los dueños
   const [citasGrooming, setCitasGrooming] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -48,14 +53,15 @@ export default function Grooming() {
   const [showModalTurno, setShowModalTurno] = useState(false);
   const [showModalFicha, setShowModalFicha] = useState(false);
   const [citaActiva, setCitaActiva] = useState(null);
-  const [mascotaActiva, setMascotaActiva] = useState(null); // Para ver el historial de la cita seleccionada
+  const [mascotaActiva, setMascotaActiva] = useState(null);
 
-  // Estado del formulario de nueva cita
+  // Estado del formulario de nueva cita (Añadido 'fecha')
   const estadoInicial = {
-    mascotaId: '',
+    duenoNombre: '', 
+    mascotaId: '',   
     mascotaNombre: '',
-    duenoNombre: '',
     servicio: 'Corte de Pelo (Estilismo)',
+    fecha: '', // <--- CORRECCIÓN: Campo de fecha agregado
     horario: '',
     instrucciones: '',
     estado: 'Pendiente',
@@ -65,10 +71,17 @@ export default function Grooming() {
   const [nuevoTurno, setNuevoTurno] = useState(estadoInicial);
 
   useEffect(() => {
+    // Escuchar Mascotas para armar los catálogos
     const unsubMascotas = onSnapshot(collection(db, 'mascotas'), (snapshot) => {
-      setMascotas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMascotas(docs);
+      
+      // Extraemos una lista de dueños únicos para el primer desplegable
+      const uniqueOwners = Array.from(new Set(docs.map(m => m.duenoNombre).filter(Boolean)));
+      setDueños(uniqueOwners.sort());
     });
 
+    // Escuchar Citas
     const qCitas = query(collection(db, 'grooming'), orderBy('fechaRegistro', 'desc'));
     const unsubCitas = onSnapshot(qCitas, (snapshot) => {
       setCitasGrooming(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -92,6 +105,18 @@ export default function Grooming() {
     return precioFinal;
   };
 
+  // Manejador del cambio de DUEÑO
+  const handleCambioDueno = (nombreDueno) => {
+    setNuevoTurno({
+      ...nuevoTurno,
+      duenoNombre: nombreDueno,
+      mascotaId: '', // Limpiamos mascota al cambiar dueño
+      mascotaNombre: '',
+      precioCalculado: 0
+    });
+  };
+
+  // Manejador general del formulario
   const handleCambioCotizacion = (campo, valor) => {
     const turnoActualizado = { ...nuevoTurno, [campo]: valor };
     
@@ -99,7 +124,6 @@ export default function Grooming() {
       const mascotaSel = mascotas.find(m => m.id === valor);
       if (mascotaSel) {
         turnoActualizado.mascotaNombre = mascotaSel.nombre;
-        turnoActualizado.duenoNombre = mascotaSel.duenoNombre;
       }
     }
 
@@ -114,12 +138,24 @@ export default function Grooming() {
 
   const handleAgendarTurno = async (e) => {
     e.preventDefault();
-    if(!nuevoTurno.mascotaId || !nuevoTurno.horario) return alert('Por favor selecciona la mascota y el horario.');
+    if(!nuevoTurno.mascotaId || !nuevoTurno.horario || !nuevoTurno.fecha) {
+      return alert('Por favor selecciona la mascota, fecha y horario.');
+    }
     
+    // Convertir horario string ("10:00 AM") a un Timestamp para que el Resumen lo detecte
+    const [time, modifier] = nuevoTurno.horario.split(' ');
+    let [hours, minutes] = time.split(':');
+    if (hours === '12') hours = '00';
+    if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
+
+    const fechaTimestamp = new Date(nuevoTurno.fecha); // Toma la fecha seleccionada
+    fechaTimestamp.setHours(hours, minutes, 0, 0);
+
     try {
       await addDoc(collection(db, 'grooming'), {
         ...nuevoTurno,
-        fechaRegistro: new Date().toISOString()
+        fechaRegistro: new Date().toISOString(),
+        fechaTimestamp: fechaTimestamp // Dato clave para el dashboard
       });
       setShowModalTurno(false);
       setNuevoTurno(estadoInicial);
@@ -138,7 +174,7 @@ export default function Grooming() {
   };
 
   const eliminarCita = async (id) => {
-    if(confirm('¿Cancelar permanentemente este turno?')) {
+    if(window.confirm('¿Cancelar permanentemente este turno?')) {
       await deleteDoc(doc(db, 'grooming', id));
       setShowModalFicha(false);
     }
@@ -162,7 +198,7 @@ export default function Grooming() {
   );
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate__animated animate__fadeIn">
 
       {/* --- TARJETAS CONTADORAS (KPIs) SUPERIORES --- */}
       <Row className="mb-4 g-3">
@@ -222,7 +258,7 @@ export default function Grooming() {
             <thead className="text-muted small" style={{backgroundColor: '#F9FAFB'}}>
               <tr>
                 <th className="px-4 py-3">PACIENTE / DUEÑO</th>
-                <th>HORARIO</th>
+                <th>FECHA Y HORARIO</th>
                 <th>SERVICIO A REALIZAR</th>
                 <th>ESTATUS DEL TURNO</th>
                 <th className="text-end px-4">MESA DE TRABAJO</th>
@@ -237,13 +273,16 @@ export default function Grooming() {
                       <small className="text-muted">Dueño: {cita.duenoNombre}</small>
                     </td>
                     <td>
-                      <Badge bg="dark" className="px-3 py-2 rounded-pill fw-normal shadow-sm">
-                        {cita.horario}
-                      </Badge>
+                      <div className="d-flex flex-column gap-1">
+                        <small className="text-muted">{cita.fecha}</small>
+                        <Badge bg="dark" className="px-3 py-2 rounded-pill fw-normal shadow-sm w-auto align-self-start">
+                          {cita.horario}
+                        </Badge>
+                      </div>
                     </td>
                     <td>
                       <p className="fw-bold m-0 text-dark" style={{fontSize: '14px'}}>{cita.servicio}</p>
-                      <small className="text-muted">{NIVELES_NUDOS[cita.nivelNudos || 0].label.split(' ')[0]} Nudos</small>
+                      <small className="text-muted">{NIVELES_NUDOS[cita.nivelNudos || 0]?.label.split(' ')[0]} Nudos</small>
                     </td>
                     <td>
                       <Badge bg={
@@ -287,18 +326,36 @@ export default function Grooming() {
         </Modal.Header>
         <Modal.Body className="p-4">
           <Form onSubmit={handleAgendarTurno}>
+            
+            {/* LÓGICA DUEÑO -> MASCOTA */}
             <Row>
-              <Col md={12}>
+              <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label className="custom-label">Mascota (Cliente)</Form.Label>
+                  <Form.Label className="custom-label text-uppercase text-muted small fw-bold">Dueño (Cliente)</Form.Label>
+                  <Form.Select 
+                    className="custom-input bg-light border-0 shadow-sm"
+                    value={nuevoTurno.duenoNombre}
+                    onChange={(e) => handleCambioDueno(e.target.value)}
+                  >
+                    <option value="">Seleccionar dueño...</option>
+                    {dueños.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="custom-label text-uppercase text-muted small fw-bold">Mascota</Form.Label>
                   <Form.Select 
                     className="custom-input bg-light border-0 shadow-sm"
                     value={nuevoTurno.mascotaId}
                     onChange={(e) => handleCambioCotizacion('mascotaId', e.target.value)}
+                    disabled={!nuevoTurno.duenoNombre} // Bloqueado si no hay dueño
                   >
                     <option value="">Seleccionar mascota...</option>
-                    {mascotas.map(m => (
-                      <option key={m.id} value={m.id}>{m.nombre} - {m.duenoNombre}</option>
+                    {mascotas
+                      .filter(m => m.duenoNombre === nuevoTurno.duenoNombre)
+                      .map(m => (
+                      <option key={m.id} value={m.id}>{m.nombre}</option>
                     ))}
                   </Form.Select>
                 </Form.Group>
@@ -306,9 +363,9 @@ export default function Grooming() {
             </Row>
 
             <Row>
-              <Col md={6}>
+              <Col md={4}>
                 <Form.Group className="mb-3">
-                  <Form.Label className="custom-label">Servicio Requerido</Form.Label>
+                  <Form.Label className="custom-label text-uppercase text-muted small fw-bold">Servicio Requerido</Form.Label>
                   <Form.Select 
                     className="custom-input"
                     value={nuevoTurno.servicio}
@@ -318,9 +375,20 @@ export default function Grooming() {
                   </Form.Select>
                 </Form.Group>
               </Col>
-              <Col md={6}>
+              <Col md={4}>
                 <Form.Group className="mb-3">
-                  <Form.Label className="custom-label">Horario</Form.Label>
+                  <Form.Label className="custom-label text-uppercase text-muted small fw-bold">Fecha</Form.Label>
+                  <Form.Control 
+                    type="date"
+                    className="custom-input"
+                    value={nuevoTurno.fecha}
+                    onChange={(e) => setNuevoTurno({...nuevoTurno, fecha: e.target.value})}
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label className="custom-label text-uppercase text-muted small fw-bold">Horario</Form.Label>
                   <Form.Select 
                     className="custom-input"
                     value={nuevoTurno.horario}
@@ -340,7 +408,7 @@ export default function Grooming() {
                   <IoCut /> Termómetro de Nudos (Evaluación Inicial)
                 </Form.Label>
                 <Form.Select 
-                  className="custom-input"
+                  className="custom-input bg-white"
                   value={nuevoTurno.nivelNudos}
                   onChange={(e) => handleCambioCotizacion('nivelNudos', parseInt(e.target.value))}
                 >
@@ -357,7 +425,7 @@ export default function Grooming() {
             <Row className="align-items-center mb-4">
               <Col md={8}>
                 <Form.Group>
-                  <Form.Label className="custom-label">Instrucciones Especiales del Dueño</Form.Label>
+                  <Form.Label className="custom-label text-uppercase text-muted small fw-bold">Instrucciones Especiales del Dueño</Form.Label>
                   <Form.Control 
                     as="textarea"
                     rows={2}

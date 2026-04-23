@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Row, Col, Modal, Form, Table, Spinner, Badge } from 'react-bootstrap';
 import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-// ¡AQUÍ ESTABA EL ERROR! Faltaba importar IoAlertCircle
 import { IoHome, IoSearch, IoAdd, IoEye, IoBed, IoRestaurant, IoCalendarOutline, IoCheckmarkDone, IoTrash, IoNotifications, IoCloseCircle, IoAlertCircle } from 'react-icons/io5';
 
 // --- CATÁLOGOS ---
@@ -11,6 +10,7 @@ const NIVELES_SOCIALIZACION = ['Amigable', 'Reactivo', 'Miedoso'];
 
 export default function Hospedaje() {
   const [mascotas, setMascotas] = useState([]);
+  const [dueños, setDueños] = useState([]); // <-- NUEVO: Estado para lista de dueños
   const [estancias, setEstancias] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -34,8 +34,14 @@ export default function Hospedaje() {
   const [solicitudActiva, setSolicitudActiva] = useState(null);
 
   useEffect(() => {
+    // 1. Escuchar Mascotas y extraer lista de Dueños
     const unsubMascotas = onSnapshot(query(collection(db, 'mascotas')), (snap) => {
-      setMascotas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMascotas(docs);
+      
+      // Extraemos la lista única de dueños
+      const uniqueOwners = Array.from(new Set(docs.map(m => m.dueñoNombre || m.duenoNombre).filter(Boolean)));
+      setDueños(uniqueOwners.sort());
     });
 
     const qEstancias = query(collection(db, 'hospedaje'), orderBy('createdAt', 'desc'));
@@ -46,6 +52,16 @@ export default function Hospedaje() {
 
     return () => { unsubMascotas(); unsubEstancias(); };
   }, []);
+
+  // --- MANEJADORES DUEÑO -> MASCOTA ---
+  const handleCambioDueño = (nombreDueño) => {
+    setNuevaSolicitud({ ...nuevaSolicitud, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '' });
+  };
+
+  const handleCambioMascota = (mascotaId) => {
+    const pet = mascotas.find(m => m.id === mascotaId);
+    setNuevaSolicitud({ ...nuevaSolicitud, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
+  };
 
   // --- ACCIONES ---
   const crearSolicitudManual = async (e) => {
@@ -64,6 +80,7 @@ export default function Hospedaje() {
   const aprobarReserva = async (e) => {
     e.preventDefault();
     try {
+      // Al cambiar el estado a 'Hospedado', el Resumen lo detectará automáticamente
       await updateDoc(doc(db, 'hospedaje', solicitudActiva.id), {
         habitacion: solicitudActiva.habitacion,
         estado: 'Hospedado',
@@ -282,18 +299,37 @@ export default function Hospedaje() {
         <Modal.Header closeButton><Modal.Title className="fw-bold">Ingreso Manual (Recepción)</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
           <Form onSubmit={crearSolicitudManual}>
+            
+            {/* LÓGICA DUEÑO -> MASCOTA INTEGRADA */}
             <Row className="mb-3">
-              <Col md={12}>
-                <Form.Label className="custom-label">Mascota (Dueño)</Form.Label>
-                <Form.Select onChange={e => {
-                  const pet = mascotas.find(m => m.id === e.target.value);
-                  setNuevaSolicitud({...nuevaSolicitud, mascotaId: e.target.value, mascotaNombre: pet?.nombre, dueñoNombre: pet?.dueñoNombre});
-                }} className="custom-input" required>
+              <Col md={6}>
+                <Form.Label className="custom-label">Dueño (Cliente)</Form.Label>
+                <Form.Select 
+                  value={nuevaSolicitud.dueñoNombre} 
+                  onChange={e => handleCambioDueño(e.target.value)} 
+                  className="custom-input" required
+                >
+                  <option value="">Seleccionar dueño...</option>
+                  {dueños.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                </Form.Select>
+              </Col>
+              <Col md={6}>
+                <Form.Label className="custom-label">Mascota</Form.Label>
+                <Form.Select 
+                  value={nuevaSolicitud.mascotaId} 
+                  onChange={e => handleCambioMascota(e.target.value)} 
+                  className="custom-input" required
+                  disabled={!nuevaSolicitud.dueñoNombre}
+                >
                   <option value="">Seleccionar huésped...</option>
-                  {mascotas.map(m => <option key={m.id} value={m.id}>{m.nombre} (Dueño: {m.dueñoNombre})</option>)}
+                  {mascotas
+                    .filter(m => (m.dueñoNombre || m.duenoNombre) === nuevaSolicitud.dueñoNombre)
+                    .map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)
+                  }
                 </Form.Select>
               </Col>
             </Row>
+
             <Row className="mb-3">
               <Col md={6}><Form.Label className="custom-label">Ingreso</Form.Label><Form.Control type="date" onChange={e => setNuevaSolicitud({...nuevaSolicitud, fechaIngreso: e.target.value})} className="custom-input" required /></Col>
               <Col md={6}><Form.Label className="custom-label">Salida</Form.Label><Form.Control type="date" onChange={e => setNuevaSolicitud({...nuevaSolicitud, fechaSalida: e.target.value})} className="custom-input" required /></Col>

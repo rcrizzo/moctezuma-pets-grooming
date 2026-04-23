@@ -7,10 +7,17 @@ import { IoCalendar, IoShieldCheckmark, IoSearch, IoAdd, IoEye, IoPencil, IoTras
 // --- CATÁLOGOS SINCRONIZADOS ---
 const TIPOS_PREVENTIVO = ['Vacunación', 'Desparasitación Interna', 'Desparasitación Externa'];
 const PRODUCTOS_ESTANDAR = ['Sextuple Canine', 'Triple Felina', 'Rabia', 'Bordetella', 'Giardia', 'Endogard', 'Simparica', 'Bravecto'];
-const HORARIOS_DISPONIBLES = ['09:00 AM', '11:00 AM', '01:00 PM', '04:00 PM'];
+
+// HORARIOS UNIFICADOS (10:00 AM a 7:00 PM)
+const HORARIOS_DISPONIBLES = [
+  '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', 
+  '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', 
+  '06:00 PM', '07:00 PM'
+];
 
 export default function Veterinaria() {
   const [mascotas, setMascotas] = useState([]);
+  const [dueños, setDueños] = useState([]); 
   const [citas, setCitas] = useState([]);
   const [preventivos, setPreventivos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -35,9 +42,13 @@ export default function Veterinaria() {
   const [citaSeleccionada, setCitaSeleccionada] = useState(null);
 
   useEffect(() => {
-    // 1. Escuchar Mascotas (Trayendo el dueño de una vez)
+    // 1. Escuchar Mascotas y extraer Dueños
     const unsubMascotas = onSnapshot(query(collection(db, 'mascotas')), (snap) => {
-      setMascotas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMascotas(docs);
+      
+      const uniqueOwners = Array.from(new Set(docs.map(m => m.dueñoNombre || m.duenoNombre).filter(Boolean)));
+      setDueños(uniqueOwners.sort());
     });
 
     // 2. Escuchar Consultas
@@ -56,14 +67,42 @@ export default function Veterinaria() {
     return () => { unsubMascotas(); unsubConsultas(); unsubCarnets(); };
   }, []);
 
-  // --- FUNCIONES DE ACCIÓN ---
+  // --- MANEJADORES DUEÑO -> MASCOTA ---
+  const handleCambioDueñoCita = (nombreDueño) => {
+    setNuevaCita({ ...nuevaCita, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '' });
+  };
 
+  const handleCambioMascotaCita = (mascotaId) => {
+    const pet = mascotas.find(m => m.id === mascotaId);
+    setNuevaCita({ ...nuevaCita, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
+  };
+
+  const handleCambioDueñoSello = (nombreDueño) => {
+    setNuevoSello({ ...nuevoSello, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '' });
+  };
+
+  const handleCambioMascotaSello = (mascotaId) => {
+    const pet = mascotas.find(m => m.id === mascotaId);
+    setNuevoSello({ ...nuevoSello, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
+  };
+
+  // --- FUNCIONES DE ACCIÓN ---
   const agendarCita = async (e) => {
     e.preventDefault();
     if (!nuevaCita.mascotaId) return alert("Selecciona una mascota");
+
+    const [time, modifier] = nuevaCita.horaCita.split(' ');
+    let [hours, minutes] = time.split(':');
+    if (hours === '12') hours = '00';
+    if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
+
+    const fechaTimestamp = new Date(nuevaCita.fechaCita);
+    fechaTimestamp.setHours(hours, minutes, 0, 0);
+
     try {
       await addDoc(collection(db, 'consultas'), {
         ...nuevaCita,
+        fechaTimestamp: fechaTimestamp,
         createdAt: serverTimestamp()
       });
       setShowModalNuevaCita(false);
@@ -188,23 +227,42 @@ export default function Veterinaria() {
         </Table>
       </div>
 
-      {/* MODAL: SELLAR CARTILLA (CORREGIDO CON DUEÑOS) */}
+      {/* MODAL: SELLAR CARTILLA */}
       <Modal show={showModalSellar} onHide={() => setShowModalSellar(false)} centered size="lg">
         <Modal.Header closeButton className="bg-success text-white">
           <Modal.Title className="fw-bold">Sellar Cartilla Digital</Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-4">
           <Form onSubmit={handleSellarCartilla}>
-            <Form.Group className="mb-3">
-              <Form.Label className="custom-label">Mascota (Asociada a Dueño)</Form.Label>
-              <Form.Select onChange={e => {
-                const pet = mascotas.find(m => m.id === e.target.value);
-                setNuevoSello({...nuevoSello, mascotaId: e.target.value, mascotaNombre: pet?.nombre, dueñoNombre: pet?.dueñoNombre});
-              }} className="custom-input" required>
-                <option value="">Seleccionar mascota...</option>
-                {mascotas.map(m => <option key={m.id} value={m.id}>{m.nombre} (Dueño: {m.dueñoNombre})</option>)}
-              </Form.Select>
-            </Form.Group>
+            <Row className="mb-3">
+              <Col md={6}>
+                <Form.Label className="custom-label">Dueño (Cliente)</Form.Label>
+                <Form.Select 
+                  value={nuevoSello.dueñoNombre} 
+                  onChange={e => handleCambioDueñoSello(e.target.value)} 
+                  className="custom-input" required
+                >
+                  <option value="">Seleccionar dueño...</option>
+                  {dueños.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                </Form.Select>
+              </Col>
+              <Col md={6}>
+                <Form.Label className="custom-label">Mascota</Form.Label>
+                <Form.Select 
+                  value={nuevoSello.mascotaId} 
+                  onChange={e => handleCambioMascotaSello(e.target.value)} 
+                  className="custom-input" required
+                  disabled={!nuevoSello.dueñoNombre}
+                >
+                  <option value="">Seleccionar mascota...</option>
+                  {mascotas
+                    .filter(m => (m.dueñoNombre || m.duenoNombre) === nuevoSello.dueñoNombre)
+                    .map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)
+                  }
+                </Form.Select>
+              </Col>
+            </Row>
+
             <Row className="mb-3">
               <Col md={6}>
                 <Form.Label className="custom-label">Tipo</Form.Label>
@@ -235,23 +293,40 @@ export default function Veterinaria() {
         </Modal.Body>
       </Modal>
 
-      {/* MODAL: AGENDAR CITA (CORREGIDO CON DUEÑOS) */}
+      {/* MODAL: AGENDAR CITA */}
       <Modal show={showModalNuevaCita} onHide={() => setShowModalNuevaCita(false)} centered size="lg">
         <Modal.Header closeButton><Modal.Title className="fw-bold">Agendar Nueva Cita</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
           <Form onSubmit={agendarCita}>
             <Row className="mb-3">
-              <Col md={12}>
-                <Form.Label className="custom-label">Mascota (Asociada a Dueño)</Form.Label>
-                <Form.Select onChange={e => {
-                  const pet = mascotas.find(m => m.id === e.target.value);
-                  setNuevaCita({...nuevaCita, mascotaId: e.target.value, mascotaNombre: pet?.nombre, dueñoNombre: pet?.dueñoNombre});
-                }} className="custom-input" required>
+              <Col md={6}>
+                <Form.Label className="custom-label">Dueño (Cliente)</Form.Label>
+                <Form.Select 
+                  value={nuevaCita.dueñoNombre} 
+                  onChange={e => handleCambioDueñoCita(e.target.value)} 
+                  className="custom-input" required
+                >
+                  <option value="">Seleccionar dueño...</option>
+                  {dueños.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                </Form.Select>
+              </Col>
+              <Col md={6}>
+                <Form.Label className="custom-label">Mascota</Form.Label>
+                <Form.Select 
+                  value={nuevaCita.mascotaId} 
+                  onChange={e => handleCambioMascotaCita(e.target.value)} 
+                  className="custom-input" required
+                  disabled={!nuevaCita.dueñoNombre}
+                >
                   <option value="">Seleccionar mascota...</option>
-                  {mascotas.map(m => <option key={m.id} value={m.id}>{m.nombre} (Dueño: {m.dueñoNombre})</option>)}
+                  {mascotas
+                    .filter(m => (m.dueñoNombre || m.duenoNombre) === nuevaCita.dueñoNombre)
+                    .map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)
+                  }
                 </Form.Select>
               </Col>
             </Row>
+
             <Row className="mb-3">
               <Col md={6}>
                 <Form.Label className="custom-label">Fecha</Form.Label>

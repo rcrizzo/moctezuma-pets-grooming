@@ -47,7 +47,7 @@ export default function Clientes() {
     try {
       const qMascotas = query(
         collection(db, 'mascotas'), 
-        where('dueñoNombre', '==', cliente.nombre)
+        where('duenoNombre', '==', cliente.nombre) // CORREGIDO A 'duenoNombre'
       );
       const snap = await getDocs(qMascotas);
       const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -66,8 +66,8 @@ export default function Clientes() {
     setNuevoCliente({ nombre: cliente.nombre, telefono: cliente.telefono, email: cliente.email || '' });
     setIdClienteEdit(cliente.id);
     setEditando(true);
-    setShowModalPerfil(false); // Cerramos el perfil
-    setShowModal(true);        // Abrimos el formulario
+    setShowModalPerfil(false); 
+    setShowModal(true);        
   };
 
   const eliminarCliente = async (id) => {

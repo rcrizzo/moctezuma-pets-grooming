@@ -7,7 +7,8 @@ import {
   query, 
   doc, 
   updateDoc, 
-  deleteDoc 
+  deleteDoc,
+  where
 } from 'firebase/firestore';
 import { 
   Form, 
@@ -34,8 +35,8 @@ const Mascotas = () => {
     duenoId: '',
     duenoNombre: '',
     raza: '',
-    talla: 'Mediano', // Mini, Chico, Mediano, Grande, Gigante
-    tipoPelo: 'Pelo Corto', // Pelo Corto, Pelo Largo
+    talla: 'Mediano',
+    tipoPelo: 'Pelo Corto',
     peso: '',
     etiquetas: []
   });
@@ -54,8 +55,8 @@ const Mascotas = () => {
       setMascotas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Escuchar clientes para el select
-    const qClientes = query(collection(db, "clientes"));
+    // Escuchar clientes para el select (CORREGIDO PARA APUNTAR A 'usuarios')
+    const qClientes = query(collection(db, "usuarios"), where("rol", "==", "cliente"));
     const unsubClientes = onSnapshot(qClientes, (snapshot) => {
       setClientes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
