@@ -11,9 +11,17 @@ export default function LoginScreen() {
   const [cargando, setCargando] = useState(false);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      return Alert.alert('Error', 'Por favor ingresa tu correo y contraseña.');
+    try {
+    // Tu código de inicio de sesión de Firebase...
+    // await signInWithEmailAndPassword(auth, email, password);
+  } catch (error: any) {
+    // En lugar de console.error(error); usamos esto:
+    if (error.code === 'auth/invalid-credential') {
+      Alert.alert("Error", "El correo o la contraseña son incorrectos. Intenta de nuevo.");
+    } else {
+      Alert.alert("Error", "Hubo un problema al iniciar sesión.");
     }
+  }
 
     setCargando(true);
     try {

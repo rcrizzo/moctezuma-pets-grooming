@@ -6,8 +6,8 @@ import { IoCube, IoAlertCircle, IoAdd, IoSearch, IoPencil, IoTrash, IoEye, IoCar
 
 const CATEGORIAS = ['Salud', 'Higiene', 'Alimento', 'Accesorios', 'Farmacia'];
 
-// Recibimos la función onVerPedidos para el acceso directo
-export default function Inventario({ onVerPedidos }) {
+// Recibimos la función setVistaActual para la navegación
+export default function Inventario({ setVistaActual }) {
   const [productos, setProductos] = useState([]);
   const [pedidosPendientes, setPedidosPendientes] = useState(0); // Estado para el contador del acceso directo
   const [cargando, setCargando] = useState(true);
@@ -113,7 +113,7 @@ export default function Inventario({ onVerPedidos }) {
         {/* TARJETA DE ACCESO DIRECTO A PEDIDOS */}
         <Col md={3}>
           <div 
-            onClick={onVerPedidos} 
+            onClick={() => setVistaActual('pedidos')} 
             className="glass-card p-3 h-100 d-flex flex-column justify-content-center text-center border-bottom border-warning border-4"
             style={{ cursor: 'pointer', backgroundColor: pedidosPendientes > 0 ? '#FFFBEB' : '#FFFFFF' }}
           >

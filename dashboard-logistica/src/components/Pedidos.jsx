@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Table, Row, Col, Modal, Spinner, Badge } from 'react-bootstrap';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase'; // Ajusta la ruta si es necesario
-import { IoCart, IoEye, IoCheckmarkCircle, IoTimeOutline, IoCubeOutline } from 'react-icons/io5';
+import { IoCart, IoEye, IoCheckmarkCircle, IoTimeOutline, IoCubeOutline, IoArrowBackOutline } from 'react-icons/io5';
 
-export default function Pedidos() {
+// Recibimos la función setVistaActual para la navegación
+export default function Pedidos({ setVistaActual }) {
   const [pedidos, setPedidos] = useState([]);
   const [cargando, setCargando] = useState(true);
   
@@ -67,13 +68,24 @@ export default function Pedidos() {
     <div className="animate__animated animate__fadeIn">
       {/* CABECERA */}
       <div className="glass-card mb-4">
-        <div className="p-4 p-md-5 border-bottom" style={{ borderColor: 'var(--border-light)' }}>
-          <h3 className="fw-bold m-0 d-flex align-items-center gap-2">
-            <IoCart color="var(--accent)" /> Recepción de Pedidos (App)
-          </h3>
-          <p className="text-muted m-0 mt-1" style={{fontSize: '14px'}}>
-            Gestiona los apartados que los clientes realizan desde su teléfono.
-          </p>
+        <div className="p-4 p-md-5 border-bottom d-flex align-items-center gap-3" style={{ borderColor: 'var(--border-light)' }}>
+          {/* BOTÓN PARA REGRESAR AL INVENTARIO */}
+          <button 
+            onClick={() => setVistaActual('inventario')} 
+            className="btn btn-light shadow-sm border p-2 d-flex align-items-center justify-content-center"
+            style={{ borderRadius: '10px' }}
+          >
+            <IoArrowBackOutline size={22} color="var(--text-dark)" />
+          </button>
+          
+          <div>
+            <h3 className="fw-bold m-0 d-flex align-items-center gap-2">
+              <IoCart color="var(--accent)" /> Recepción de Pedidos (App)
+            </h3>
+            <p className="text-muted m-0 mt-1" style={{fontSize: '14px'}}>
+              Gestiona los apartados que los clientes realizan desde su teléfono.
+            </p>
+          </div>
         </div>
 
         {/* TABLA PRINCIPAL */}

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './firebase'; 
 import { Spinner } from 'react-bootstrap';
-// Importamos los íconos
 import { IoPaw, IoBarChart, IoCut, IoMedical, IoBed, IoPeople, IoStorefront, IoLogOut } from 'react-icons/io5';
 
 // Componentes
@@ -41,7 +40,7 @@ function App() {
 
   if (verificandoAuth) {
     return (
-      <div className="d-flex justify-content-center align-items-center vh-100" style={{backgroundColor: 'var(--bg-main)'}}>
+      <div className="d-flex justify-content-center align-items-center vh-100" style={{backgroundColor: 'var(--main-bg)'}}>
         <Spinner animation="border" style={{color: 'var(--accent)'}} />
       </div>
     );
@@ -53,11 +52,12 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* SIDEBAR FIJO: Nunca desaparece al cambiar de vistas */}
       <aside className="sidebar pt-4 d-flex flex-column" style={{ overflowY: 'auto' }}>
         <div className="px-4 mb-4 d-flex align-items-center gap-3">
           <IoPaw size={28} color="var(--accent)" />
           <h1 className="m-0 text-white fw-bold" style={{fontSize: '18px', letterSpacing: '0.5px'}}>
-            Moctezuma Pet's Grooming
+            Moctezuma Pet's
           </h1>
         </div>
 
@@ -85,7 +85,8 @@ function App() {
           <div className={`nav-item-custom ${vistaActual === 'mascotas' ? 'active' : ''}`} onClick={() => setVistaActual('mascotas')}>
             <IoPaw size={18} /> Perfiles Mascotas
           </div>
-          <div className={`nav-item-custom ${vistaActual === 'inventario' ? 'active' : ''}`} onClick={() => setVistaActual('inventario')}>
+          {/* Al darle click al inventario, o si estás en pedidos, mantiene iluminada esta sección */}
+          <div className={`nav-item-custom ${vistaActual === 'inventario' || vistaActual === 'pedidos' ? 'active' : ''}`} onClick={() => setVistaActual('inventario')}>
             <IoStorefront size={18} /> Inventario y Tienda
           </div>
         </nav>
@@ -99,7 +100,9 @@ function App() {
 
       <main className="main-wrapper">
         <header className="top-header">
-          <h2 className="m-0 fw-bold" style={{fontSize: '22px', color: 'var(--text-dark)'}}>Panel Administrativo</h2>
+          <h2 className="m-0 fw-bold" style={{fontSize: '22px', color: 'var(--text-dark)'}}>
+            {vistaActual === 'pedidos' ? 'Bandeja de Pedidos' : 'Panel Administrativo'}
+          </h2>
           <div className="d-flex align-items-center gap-3">
             <div className="text-end">
               <p className="m-0 fw-bold" style={{fontSize: '14px'}}>Administrador</p>
@@ -118,7 +121,10 @@ function App() {
           {vistaActual === 'hospedaje' && <Hospedaje />}
           {vistaActual === 'clientes' && <Clientes />}
           {vistaActual === 'mascotas' && <Mascotas />}
-          {vistaActual === 'inventario' && <Inventario />}
+          
+          {/* PASAMOS LA FUNCIÓN setVistaActual A TUS COMPONENTES ORIGINALES */}
+          {vistaActual === 'inventario' && <Inventario setVistaActual={setVistaActual} />}
+          {vistaActual === 'pedidos' && <Pedidos setVistaActual={setVistaActual} />}
         </section>
       </main>
     </div>
