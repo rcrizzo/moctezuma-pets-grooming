@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Row, Col, Modal, Form, Table, Spinner, Badge } from 'react-bootstrap';
 import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { IoHome, IoSearch, IoAdd, IoEye, IoBed, IoRestaurant, IoCalendarOutline, IoCheckmarkDone, IoTrash, IoNotifications, IoCloseCircle } from 'react-icons/io5';
+// ¡AQUÍ ESTABA EL ERROR! Faltaba importar IoAlertCircle
+import { IoHome, IoSearch, IoAdd, IoEye, IoBed, IoRestaurant, IoCalendarOutline, IoCheckmarkDone, IoTrash, IoNotifications, IoCloseCircle, IoAlertCircle } from 'react-icons/io5';
 
 // --- CATÁLOGOS ---
 const TIPOS_HABITACION = ['Corral General', 'Jaula Individual', 'Suite Premium', 'Área de Gatos'];
@@ -15,22 +16,22 @@ export default function Hospedaje() {
   const [busqueda, setBusqueda] = useState('');
   
   // Modales
-  const [showModalSolicitud, setShowModalSolicitud] = useState(false); // Para registrar manualmente
-  const [showModalAprobar, setShowModalAprobar] = useState(false); // Para aprobar y asignar cuarto
-  const [showModalFicha, setShowModalFicha] = useState(false); // Para ver el huésped y dar check-out
+  const [showModalSolicitud, setShowModalSolicitud] = useState(false);
+  const [showModalAprobar, setShowModalAprobar] = useState(false);
+  const [showModalFicha, setShowModalFicha] = useState(false);
 
   const estadoInicial = {
     mascotaId: '', mascotaNombre: '', dueñoNombre: '', 
     fechaIngreso: '', fechaSalida: '', 
-    guiaAlimentacion: '', // Viene de la App
-    nivelSocializacion: 'Amigable', // Viene de la App
+    guiaAlimentacion: '', 
+    nivelSocializacion: 'Amigable', 
     pertenencias: '', notas: '', 
-    habitacion: 'Sin Asignar', // Se asigna al aprobar
-    estado: 'Pendiente' // 'Pendiente', 'Hospedado', 'Finalizado', 'Rechazado'
+    habitacion: 'Sin Asignar', 
+    estado: 'Pendiente' 
   };
 
   const [nuevaSolicitud, setNuevaSolicitud] = useState(estadoInicial);
-  const [solicitudActiva, setSolicitudActiva] = useState(null); // La que estamos evaluando/viendo
+  const [solicitudActiva, setSolicitudActiva] = useState(null);
 
   useEffect(() => {
     const unsubMascotas = onSnapshot(query(collection(db, 'mascotas')), (snap) => {
@@ -47,8 +48,6 @@ export default function Hospedaje() {
   }, []);
 
   // --- ACCIONES ---
-
-  // 1. Crear solicitud (Manual desde mostrador)
   const crearSolicitudManual = async (e) => {
     e.preventDefault();
     if (!nuevaSolicitud.mascotaId) return alert("Selecciona un huésped");
@@ -62,7 +61,6 @@ export default function Hospedaje() {
     } catch (err) { console.error(err); }
   };
 
-  // 2. Aprobar Solicitud (Asignar cuarto y pasar a Hospedado)
   const aprobarReserva = async (e) => {
     e.preventDefault();
     try {
@@ -75,7 +73,6 @@ export default function Hospedaje() {
     } catch (err) { console.error(err); }
   };
 
-  // 3. Rechazar Solicitud
   const rechazarReserva = async (id) => {
     if(window.confirm("¿Estás seguro de rechazar esta solicitud de hospedaje? Se notificará al cliente.")){
       await updateDoc(doc(db, 'hospedaje', id), { estado: 'Rechazado' });
@@ -83,7 +80,6 @@ export default function Hospedaje() {
     }
   };
 
-  // 4. Check-out
   const darDeAlta = async (id) => {
     if (window.confirm("¿Confirmas la salida de la mascota?")) {
       await updateDoc(doc(db, 'hospedaje', id), { estado: 'Finalizado', salidaReal: serverTimestamp() });
@@ -94,14 +90,23 @@ export default function Hospedaje() {
   // Filtros rápidos
   const solicitudes = estancias.filter(e => e.estado === 'Pendiente');
   const huespedes = estancias.filter(e => e.estado === 'Hospedado');
-  const salidasHoy = huespedes.filter(e => e.fechaSalida === new Date().toISOString().split('T')[0]);
+  const fechaHoy = new Date().toISOString().split('T')[0];
 
-  // Estilos visuales
   const colorSocializacion = (nivel) => {
     if(nivel === 'Amigable') return 'success';
     if(nivel === 'Reactivo') return 'danger';
-    return 'info'; // Miedoso
+    return 'info'; 
   };
+
+  // 0. PANTALLA DE CARGA
+  if (cargando) {
+    return (
+      <div className="d-flex flex-column justify-content-center align-items-center" style={{ height: '70vh' }}>
+        <Spinner animation="border" style={{ color: '#F59E0B' }} />
+        <p className="text-muted mt-3 fw-bold">Cargando logística del hotel...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate__animated animate__fadeIn">
@@ -155,7 +160,12 @@ export default function Hospedaje() {
                 <strong>Fechas:</strong> {sol.fechaIngreso} al {sol.fechaSalida}
               </div>
               <button 
-                onClick={() => {setSolicitudActiva({...sol, habitacion: 'Corral General'}); setShowModalAprobar(true);}} 
+                onClick={() => {
+                  // MEJORA: Pre-selecciona Jaula Individual si es Reactivo
+                  const habitacionSugerida = sol.nivelSocializacion === 'Reactivo' ? 'Jaula Individual' : 'Corral General';
+                  setSolicitudActiva({...sol, habitacion: habitacionSugerida}); 
+                  setShowModalAprobar(true);
+                }} 
                 className="btn btn-dark w-100 fw-bold"
               >
                 Evaluar y Asignar
@@ -163,7 +173,7 @@ export default function Hospedaje() {
             </div>
           </Col>
         )) : (
-          <Col><p className="text-muted italic ms-2">No hay solicitudes nuevas de hospedaje por el momento.</p></Col>
+          <Col><p className="text-muted fst-italic ms-2">No hay solicitudes nuevas de hospedaje por el momento.</p></Col>
         )}
       </Row>
 
@@ -197,8 +207,8 @@ export default function Hospedaje() {
                 <td><Badge bg="secondary">{huesped.habitacion}</Badge></td>
                 <td><Badge bg={colorSocializacion(huesped.nivelSocializacion)} style={{fontSize: '10px'}}>{huesped.nivelSocializacion}</Badge></td>
                 <td>
-                  <strong className={huesped.fechaSalida === new Date().toISOString().split('T')[0] ? 'text-danger' : 'text-dark'}>
-                    {huesped.fechaSalida}
+                  <strong className={huesped.fechaSalida === fechaHoy ? 'text-danger' : 'text-dark'}>
+                    {huesped.fechaSalida} {huesped.fechaSalida === fechaHoy && '(Hoy)'}
                   </strong>
                 </td>
                 <td className="text-end">
@@ -250,7 +260,7 @@ export default function Hospedaje() {
                   {TIPOS_HABITACION.map(h => <option key={h} value={h}>{h}</option>)}
                 </Form.Select>
                 {solicitudActiva.nivelSocializacion === 'Reactivo' && (
-                  <Form.Text className="text-danger fw-bold"><IoAlertCircle/> Se recomienda Jaula Individual por seguridad.</Form.Text>
+                  <Form.Text className="text-danger fw-bold mt-2 d-block"><IoAlertCircle size={18} className="me-1"/> Se recomienda Jaula Individual por seguridad.</Form.Text>
                 )}
               </Form.Group>
 

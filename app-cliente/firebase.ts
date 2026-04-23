@@ -1,5 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { initializeAuth } from 'firebase/auth';
+
+// Ocultamos el error de TypeScript porque la función SÍ existe en tiempo de ejecución
+// @ts-ignore
+import { getReactNativePersistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDYnvhr2nRAYURkBy7VjyZ79T8yC-V9q40",
@@ -12,4 +18,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
 export const db = getFirestore(app);
+
+// Inicializamos Auth conectándolo al almacenamiento del teléfono
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage)
+});

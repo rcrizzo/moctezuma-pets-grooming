@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Modal, Form, Table, Spinner, Badge, Card } from 'react-bootstrap';
-import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serverTimestamp, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { IoCube, IoAlertCircle, IoAdd, IoSearch, IoPencil, IoTrash, IoEye, IoCart } from 'react-icons/io5';
+import { IoCube, IoAlertCircle, IoAdd, IoSearch, IoPencil, IoTrash, IoEye, IoCart, IoNotifications } from 'react-icons/io5';
 
-// --- CATEGORÍAS PARA FILTRADO ---
 const CATEGORIAS = ['Salud', 'Higiene', 'Alimento', 'Accesorios', 'Farmacia'];
 
-export default function Inventario() {
+// Recibimos la función onVerPedidos para el acceso directo
+export default function Inventario({ onVerPedidos }) {
   const [productos, setProductos] = useState([]);
+  const [pedidosPendientes, setPedidosPendientes] = useState(0); // Estado para el contador del acceso directo
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('Todas');
   
-  // Modales y Estados de Edición
   const [showModal, setShowModal] = useState(false);
   const [editando, setEditando] = useState(false);
   
@@ -24,23 +24,29 @@ export default function Inventario() {
     stock: 0,
     stockMinimo: 5,
     precioVenta: 0,
-    imagen: 'https://via.placeholder.com/150' // Placeholder para la App
+    imagen: 'https://via.placeholder.com/150'
   };
 
   const [productoActual, setProductoActual] = useState(estadoInicial);
 
-  // --- ESCUCHAR FIREBASE ---
   useEffect(() => {
-    const q = query(collection(db, 'inventario'), orderBy('nombre', 'asc'));
-    const unsub = onSnapshot(q, (snap) => {
+    // 1. Escuchar el Inventario
+    const qInventario = query(collection(db, 'inventario'), orderBy('nombre', 'asc'));
+    const unsubInventario = onSnapshot(qInventario, (snap) => {
       const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProductos(lista);
       setCargando(false);
     });
-    return () => unsub();
+
+    // 2. Escuchar los Pedidos Pendientes para la alerta de la tarjeta
+    const qPedidos = query(collection(db, 'pedidos'), where('estado', '==', 'Pendiente de Recolección'));
+    const unsubPedidos = onSnapshot(qPedidos, (snap) => {
+      setPedidosPendientes(snap.size); // Solo necesitamos saber cuántos hay
+    });
+
+    return () => { unsubInventario(); unsubPedidos(); };
   }, []);
 
-  // --- FUNCIONES ---
   const handleGuardar = async (e) => {
     e.preventDefault();
     try {
@@ -73,7 +79,6 @@ export default function Inventario() {
     }
   };
 
-  // Lógica de filtrado
   const productosFiltrados = productos.filter(p => {
     const coincideNombre = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
     const coincideCat = filtroCategoria === 'Todas' || p.categoria === filtroCategoria;
@@ -82,26 +87,44 @@ export default function Inventario() {
 
   return (
     <div className="animate__animated animate__fadeIn">
-      {/* 1. DASHBOARD DE ESTADÍSTICAS */}
+      {/* 1. DASHBOARD DE ESTADÍSTICAS Y ACCESOS DIRECTOS */}
       <Row className="mb-4 gx-3">
-        <Col md={4}>
-          <div className="glass-card p-4 text-center border-bottom border-primary border-4">
-            <p className="text-muted small fw-bold mb-1 text-uppercase">Total Productos</p>
-            <h2 className="fw-bold m-0">{productos.length}</h2>
+        <Col md={3}>
+          <div className="glass-card p-3 h-100 d-flex flex-column justify-content-center text-center border-bottom border-primary border-4">
+            <p className="text-muted small fw-bold mb-1 text-uppercase">Catálogo</p>
+            <h3 className="fw-bold m-0">{productos.length} <span className="fs-6 fw-normal text-muted">items</span></h3>
           </div>
         </Col>
-        <Col md={4}>
-          <div className="glass-card p-4 text-center border-bottom border-danger border-4">
-            <p className="text-muted small fw-bold mb-1 text-uppercase">Stock Crítico (Menos de 5)</p>
-            <h2 className="fw-bold m-0 text-danger">{productos.filter(p => p.stock <= p.stockMinimo).length}</h2>
+        <Col md={3}>
+          <div className="glass-card p-3 h-100 d-flex flex-column justify-content-center text-center border-bottom border-danger border-4">
+            <p className="text-muted small fw-bold mb-1 text-uppercase">Stock Crítico</p>
+            <h3 className="fw-bold m-0 text-danger">{productos.filter(p => p.stock <= p.stockMinimo).length} <span className="fs-6 fw-normal text-muted">alertas</span></h3>
           </div>
         </Col>
-        <Col md={4}>
-          <div className="glass-card p-4 text-center border-bottom border-success border-4">
-            <p className="text-muted small fw-bold mb-1 text-uppercase">Valor del Inventario</p>
-            <h2 className="fw-bold m-0 text-success">
+        <Col md={3}>
+          <div className="glass-card p-3 h-100 d-flex flex-column justify-content-center text-center border-bottom border-success border-4">
+            <p className="text-muted small fw-bold mb-1 text-uppercase">Valor Bodega</p>
+            <h3 className="fw-bold m-0 text-success">
               ${productos.reduce((acc, p) => acc + (p.stock * p.precioVenta), 0).toLocaleString()}
-            </h2>
+            </h3>
+          </div>
+        </Col>
+        
+        {/* TARJETA DE ACCESO DIRECTO A PEDIDOS */}
+        <Col md={3}>
+          <div 
+            onClick={onVerPedidos} 
+            className="glass-card p-3 h-100 d-flex flex-column justify-content-center text-center border-bottom border-warning border-4"
+            style={{ cursor: 'pointer', backgroundColor: pedidosPendientes > 0 ? '#FFFBEB' : '#FFFFFF' }}
+          >
+            <div className="d-flex justify-content-center align-items-center gap-2 mb-1">
+              <IoNotifications color="#D97706" />
+              <p className="text-muted small fw-bold m-0 text-uppercase">Pedidos App</p>
+            </div>
+            <h3 className="fw-bold m-0 text-warning d-flex justify-content-center align-items-center gap-2">
+              {pedidosPendientes} <span className="fs-6 fw-normal text-muted">pendientes</span>
+            </h3>
+            <span className="text-primary small fw-bold mt-1">Ir a bandeja →</span>
           </div>
         </Col>
       </Row>
@@ -150,7 +173,7 @@ export default function Inventario() {
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan="5" className="text-center py-5"><Spinner animation="border" color="primary" /></td></tr>
+              <tr><td colSpan="5" className="text-center py-5"><Spinner animation="border" style={{color: 'var(--accent)'}} /></td></tr>
             ) : productosFiltrados.map((prod) => (
               <tr key={prod.id}>
                 <td>
@@ -163,7 +186,7 @@ export default function Inventario() {
                   </div>
                 </td>
                 <td><Badge bg="light" text="dark" className="border">{prod.categoria}</Badge></td>
-                <td><span className="fw-bold text-success">${prod.precioVenta}</span></td>
+                <td><span className="fw-bold text-success">${prod.precioVenta.toFixed(2)}</span></td>
                 <td>
                   <div className="d-flex align-items-center gap-2">
                     <span className={`fw-bold ${prod.stock <= prod.stockMinimo ? 'text-danger' : ''}`}>

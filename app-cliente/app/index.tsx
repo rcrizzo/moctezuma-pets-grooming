@@ -1,52 +1,113 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useState } from 'react';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase'; 
 
 export default function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [cargando, setCargando] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      return Alert.alert('Error', 'Por favor ingresa tu correo y contraseña.');
+    }
+
+    setCargando(true);
+    try {
+      await signInWithEmailAndPassword(auth, email.toLowerCase().trim(), password);
+      router.replace('/(tabs)/home');
+    } catch (error: any) {
+      console.error(error);
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        Alert.alert('Error', 'Correo o contraseña incorrectos. Verifica tus datos.');
+      } else {
+        Alert.alert('Error', 'Hubo un problema al iniciar sesión. Inténtalo más tarde.');
+      }
+    } finally {
+      setCargando(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.logoContainer}><Text style={styles.logoText}>🐾</Text></View>
-          <Text style={styles.title}>Moctezuma Pet's Grooming</Text>
-          <Text style={styles.subtitle}>Inicia sesión para gestionar las citas de tu mascota.</Text>
-        </View>
-
-        <View style={styles.formContainer}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>CORREO ELECTRÓNICO</Text>
-            <TextInput style={styles.input} placeholder="ejemplo@correo.com" keyboardType="email-address" autoCapitalize="none" placeholderTextColor="#94A3B8" />
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.header}>
+            <View style={styles.logoContainer}><Text style={styles.logoText}>🐾</Text></View>
+            <Text style={styles.title}>Moctezuma Pet's Grooming</Text>
+            <Text style={styles.subtitle}>Inicia sesión para gestionar las citas de tu mascota.</Text>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>CONTRASEÑA</Text>
-            <TextInput style={styles.input} placeholder="••••••••" secureTextEntry placeholderTextColor="#94A3B8" />
+          <View style={styles.formContainer}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>CORREO ELECTRÓNICO</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder="ejemplo@correo.com" 
+                keyboardType="email-address" 
+                autoCapitalize="none" 
+                placeholderTextColor="#94A3B8"
+                value={email}
+                onChangeText={setEmail}
+                editable={!cargando}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>CONTRASEÑA</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder="••••••••" 
+                secureTextEntry 
+                placeholderTextColor="#94A3B8"
+                value={password}
+                onChangeText={setPassword}
+                editable={!cargando}
+              />
+            </View>
+
+            <TouchableOpacity style={styles.forgotButton} onPress={() => router.push('/recovery')} disabled={cargando}>
+              <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.primaryButton, cargando && { opacity: 0.7 }]} 
+              onPress={handleLogin}
+              disabled={cargando}
+            >
+              {cargando ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Iniciar Sesión</Text>
+              )}
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.forgotButton} onPress={() => router.push('/recovery')}>
-            <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
-          </TouchableOpacity>
-
-          {/* LA LLAVE MAGICA: Esto te lleva a tus Tabs */}
-          <TouchableOpacity style={styles.primaryButton} onPress={() => router.replace('/(tabs)/home')}>
-            <Text style={styles.primaryButtonText}>Iniciar Sesión</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>¿No tienes cuenta? </Text>
-          <TouchableOpacity onPress={() => router.push('/signup')}>
-            <Text style={styles.footerLink}>Regístrate aquí</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>¿No tienes cuenta? </Text>
+            <TouchableOpacity onPress={() => router.push('/signup')} disabled={cargando}>
+              <Text style={styles.footerLink}>Regístrate aquí</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: 32 },
+  scrollContainer: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 20 },
   header: { alignItems: 'center', marginBottom: 50 },
   logoContainer: { width: 80, height: 80, backgroundColor: '#FEF3C7', borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16, borderWidth: 2, borderColor: '#FDE68A' },
   logoText: { fontSize: 44, color: '#D97706' },

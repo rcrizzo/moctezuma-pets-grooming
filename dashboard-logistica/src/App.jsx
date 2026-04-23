@@ -14,6 +14,7 @@ import Hospedaje from './components/Hospedaje';
 import Clientes from './components/Clientes';
 import Mascotas from './components/Mascotas';
 import Inventario from './components/Inventario';
+import Pedidos from './components/Pedidos';
 
 import './index.css';
 
