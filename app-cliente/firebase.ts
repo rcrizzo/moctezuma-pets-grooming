@@ -1,10 +1,6 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { initializeAuth } from 'firebase/auth';
-
-// Ocultamos el error de TypeScript porque la función SÍ existe en tiempo de ejecución
-// @ts-ignore
-import { getReactNativePersistence } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -17,11 +13,22 @@ const firebaseConfig = {
   measurementId: "G-KHYGDSNVBH"
 };
 
-const app = initializeApp(firebaseConfig);
+let app;
+let auth;
+
+// Blindaje contra recargas múltiples (Fast Refresh)
+if (!getApps().length) {
+  // Primera vez que carga la app
+  app = initializeApp(firebaseConfig);
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+} else {
+  // Si guardas cambios y el emulador recarga la pantalla
+  app = getApp();
+  const { getAuth } = require('firebase/auth');
+  auth = getAuth(app);
+}
 
 export const db = getFirestore(app);
-
-// Inicializamos Auth conectándolo al almacenamiento del teléfono
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
+export { auth };

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "app-cliente",
-    "slug": "app-cliente",
+    "name": "moctezuma-app",
+    "slug": "moctezuma-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "appcliente",
+    "scheme": "moctezumaapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -42,7 +42,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": false
+      "reactCompiler": true
     }
   }
 }
