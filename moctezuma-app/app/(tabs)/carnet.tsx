@@ -1,170 +1,191 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../../firebase';
 
 export default function CarnetScreen() {
-  const [mascotaSeleccionada, setMascotaSeleccionada] = useState<any | null>(null);
+  const { petId } = useLocalSearchParams(); // Recibimos el ID si viene desde Home
+  const [loading, setLoading] = useState(true);
+  const [misMascotas, setMisMascotas] = useState<any[]>([]);
+  const [mascotaSel, setMascotaSel] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'vacunas' | 'parasitos'>('vacunas');
 
-  // --- DATOS DE MASCOTAS (Ficha Técnica) ---
-  const misMascotas = [
-    { id: '1', nombre: 'Boby', raza: 'French Poodle', edad: '4 años', peso: '4.9 Kg', icono: '🐩', color: '#FEF3C7' },
-    { id: '2', nombre: 'Rocky', raza: 'Husky Siberiano', edad: '2 años', peso: '22.5 Kg', icono: '🐕', color: '#E0F2FE' },
-    { id: '3', nombre: 'Luna', raza: 'Golden Retriever', edad: '1 año', peso: '18.2 Kg', icono: '🐕‍🦺', color: '#FCE7F3' },
-  ];
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
 
-  // --- COMPONENTES DE LA CARTILLA REALISTA ---
-  const VaccineSticker = ({ name, color }: { name: string, color: string }) => (
-    <View style={[styles.sticker, { borderLeftColor: color }]}>
-      <Text style={styles.stickerText}>{name}</Text>
-      <View style={styles.barcodeRow}>
-        <Ionicons name="barcode-outline" size={14} color="#94A3B8" />
-        <Text style={styles.stickerSerial}>Lote: 84729A</Text>
-      </View>
-    </View>
-  );
+    // 1. Buscamos todas las mascotas del usuario en tiempo real
+    // Nota: Usamos la lógica de dashboardId que ya sincronizamos en Home
+    const qUser = query(collection(db, 'usuarios'), where('uid', '==', user.uid));
+    
+    const unsubMascotas = onSnapshot(qUser, (userSnap) => {
+      if (!userSnap.empty) {
+        const dId = userSnap.docs[0].id;
+        const qM = query(collection(db, 'mascotas'), where('duenoId', '==', dId));
+        
+        onSnapshot(qM, (petSnap) => {
+          const lista = petSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setMisMascotas(lista);
+          
+          // 2. Si venimos de Home con un petId, seleccionamos esa mascota
+          if (petId) {
+            const encontrada = lista.find(p => p.id === petId);
+            if (encontrada) setMascotaSel(encontrada);
+          } else if (lista.length > 0 && !mascotaSel) {
+            setMascotaSel(lista[0]); // Por defecto la primera
+          }
+          setLoading(false);
+        });
+      }
+    });
 
-  const StampSignature = ({ name }: { name: string }) => (
-    <View style={styles.stampContainer}>
-      <Text style={styles.stampSignature}>MVZ. {name}</Text>
-      <Text style={styles.stampCedula}>Ced. Prof. 11536014</Text>
-    </View>
-  );
+    return () => unsubMascotas();
+  }, [petId]);
 
-  // --- VISTA 1: SELECCIÓN DE MASCOTA (PORTADA) ---
-  if (!mascotaSeleccionada) {
+  if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.selectionContainer}>
-          <Text style={styles.mainTitle}>Mis Mascotas</Text>
-          <Text style={styles.mainSubtitle}>Selecciona un perfil para consultar su carnet digital.</Text>
-
-          {misMascotas.map((pet) => (
-            <TouchableOpacity 
-              key={pet.id} 
-              style={styles.petProfileCard}
-              onPress={() => setMascotaSeleccionada(pet)}
-            >
-              <View style={[styles.petImageCircle, { backgroundColor: pet.color }]}>
-                <Text style={{ fontSize: 40 }}>{pet.icono}</Text>
-              </View>
-              <View style={styles.petInfoText}>
-                <Text style={styles.petNameTitle}>{pet.nombre}</Text>
-                <Text style={styles.petBreedText}>{pet.raza}</Text>
-                <View style={styles.petStatsRow}>
-                  <View style={styles.statItem}>
-                    <Ionicons name="calendar-outline" size={14} color="#64748B" />
-                    <Text style={styles.statText}>{pet.edad}</Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Ionicons name="fitness-outline" size={14} color="#64748B" />
-                    <Text style={styles.statText}>{pet.peso}</Text>
-                  </View>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={24} color="#CBD5E1" />
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </SafeAreaView>
+      <View style={styles.centered}><ActivityIndicator color="#D97706" size="large" /></View>
     );
   }
 
-  // --- VISTA 2: CARTILLA DETALLADA (EL "LIBRO") ---
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setMascotaSeleccionada(null)}>
-          <Ionicons name="arrow-back" size={28} color="#0F172A" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cartilla de {mascotaSeleccionada.nombre}</Text>
-        <View style={{ width: 28 }} />
+        <Text style={styles.title}>Carnet Digital</Text>
       </View>
 
-      <View style={styles.tabsWrapper}>
-        <TouchableOpacity 
-          style={[styles.tabBtn, activeTab === 'vacunas' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('vacunas')}
-        >
-          <Text style={[styles.tabText, activeTab === 'vacunas' && styles.tabTextActive]}>VACUNACIÓN</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tabBtn, activeTab === 'parasitos' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('parasitos')}
-        >
-          <Text style={[styles.tabText, activeTab === 'parasitos' && styles.tabTextActive]}>PARÁSITOS</Text>
-        </TouchableOpacity>
-      </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* SELECTOR DE MASCOTAS (Burbujas) */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.selectorScroll}>
+          {misMascotas.map((pet) => (
+            <TouchableOpacity 
+              key={pet.id} 
+              onPress={() => setMascotaSel(pet)}
+              style={[styles.petBubble, mascotaSel?.id === pet.id && styles.petBubbleActive]}
+            >
+              <Text style={{fontSize: 24}}>{pet.tipo === 'Gato' ? '🐱' : '🐶'}</Text>
+              <Text style={[styles.petBubbleName, mascotaSel?.id === pet.id && styles.petBubbleNameActive]}>
+                {pet.nombre}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-      <ScrollView contentContainerStyle={styles.bookletContent}>
-        <View style={styles.tableHeader}>
-          <Text style={styles.thText}>FECHA</Text>
-          <Text style={[styles.thText, { flex: 2 }]}>{activeTab === 'vacunas' ? 'VACUNA' : 'PRODUCTO'}</Text>
-          <Text style={styles.thText}>PRÓXIMA</Text>
-          <Text style={styles.thText}>FIRMA</Text>
-        </View>
+        {mascotaSel ? (
+          <View style={styles.content}>
+            {/* FICHA TÉCNICA TIPO PASAPORTE */}
+            <View style={styles.idCard}>
+              <View style={styles.idCardHeader}>
+                <Ionicons name="paw" size={20} color="#FFFFFF" />
+                <Text style={styles.idCardTitle}>MOCTEZUMA PET ID</Text>
+              </View>
+              
+              <View style={styles.idCardBody}>
+                <View style={styles.idPhotoBox}>
+                  <Text style={{fontSize: 40}}>{mascotaSel.tipo === 'Gato' ? '🐱' : '🐶'}</Text>
+                </View>
+                
+                <View style={styles.idInfoGrid}>
+                  <InfoItem label="NOMBRE" value={mascotaSel.nombre} />
+                  <InfoItem label="RAZA" value={mascotaSel.raza} />
+                  <RowInfo>
+                    <InfoItem label="EDAD" value={mascotaSel.edad || 'N/A'} />
+                    <InfoItem label="PESO" value={mascotaSel.peso || 'N/A'} />
+                  </RowInfo>
+                  <InfoItem label="COLOR" value={mascotaSel.colorMascota || 'N/A'} />
+                </View>
+              </View>
+            </View>
 
-        {/* Ejemplo de registro basado en tus fotos */}
-        <View style={styles.tableRow}>
-          <Text style={styles.tdTextDate}>25/OCT/24</Text>
-          <View style={{ flex: 2, paddingRight: 10 }}>
-            <VaccineSticker name={activeTab === 'vacunas' ? "Peek N-RB" : "Nexgard Spectra"} color="#D97706" />
+            {/* TABS DE LA CARTILLA */}
+            <View style={styles.tabContainer}>
+              <TabBtn active={activeTab === 'vacunas'} label="VACUNAS" onPress={() => setActiveTab('vacunas')} />
+              <TabBtn active={activeTab === 'parasitos'} label="DESPARASITACIÓN" onPress={() => setActiveTab('parasitos')} />
+            </View>
+
+            {/* TABLA DE REGISTROS MÉDICOS */}
+            <View style={styles.recordsTable}>
+              <View style={styles.tableHead}>
+                <Text style={styles.th}>FECHA</Text>
+                <Text style={[styles.th, {flex: 2}]}>PRODUCTO / DOSIS</Text>
+                <Text style={styles.th}>FIRMA</Text>
+              </View>
+              
+              {/* Aquí mapearemos los carnets reales que "sellas" en el Dashboard */}
+              <View style={styles.tableBody}>
+                <Text style={styles.emptyMsg}>No hay registros recientes para {mascotaSel.nombre}</Text>
+              </View>
+            </View>
           </View>
-          <Text style={styles.tdTextDate}>25/OCT/25</Text>
-          <View style={styles.tdFirma}>
-            <StampSignature name="López S." />
+        ) : (
+          <View style={styles.noData}>
+            <Ionicons name="alert-circle-outline" size={50} color="#CBD5E1" />
+            <Text style={styles.noDataText}>No tienes mascotas registradas aún.</Text>
           </View>
-        </View>
-
-        {/* Marca de agua de fondo */}
-        <View style={styles.watermarkContainer} pointerEvents="none">
-          <Ionicons name="paw" size={150} color="rgba(241, 245, 249, 0.4)" />
-        </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// Sub-componentes para el Carnet
+const InfoItem = ({ label, value }: any) => (
+  <View style={styles.infoItem}>
+    <Text style={styles.infoLabel}>{label}</Text>
+    <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
+  </View>
+);
+
+const RowInfo = ({ children }: any) => (
+  <View style={{ flexDirection: 'row', gap: 20 }}>{children}</View>
+);
+
+const TabBtn = ({ active, label, onPress }: any) => (
+  <TouchableOpacity onPress={onPress} style={[styles.tabBtn, active && styles.tabBtnActive]}>
+    <Text style={[styles.tabBtnText, active && styles.tabBtnTextActive]}>{label}</Text>
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
-  selectionContainer: { padding: 25 },
-  mainTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
-  mainSubtitle: { fontSize: 15, color: '#64748B', marginBottom: 30, lineHeight: 22 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { paddingHorizontal: 25, paddingTop: 10, marginBottom: 15 },
+  title: { fontSize: 28, fontWeight: '900', color: '#0F172A' },
   
-  // Tarjetas de Selección
-  petProfileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 20, borderRadius: 24, marginBottom: 15, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
-  petImageCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginRight: 20 },
-  petInfoText: { flex: 1 },
-  petNameTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-  petBreedText: { fontSize: 14, color: '#64748B', marginTop: 2 },
-  petStatsRow: { flexDirection: 'row', marginTop: 10, gap: 15 },
-  statItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  statText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  selectorScroll: { paddingLeft: 25, paddingBottom: 10, gap: 15 },
+  petBubble: { alignItems: 'center', padding: 12, borderRadius: 20, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#F1F5F9', minWidth: 80 },
+  petBubbleActive: { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
+  petBubbleName: { fontSize: 12, fontWeight: '700', color: '#64748B', marginTop: 5 },
+  petBubbleNameActive: { color: '#D97706' },
 
-  // Estilos de la Cartilla (Vista Libro)
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  tabsWrapper: { flexDirection: 'row', paddingHorizontal: 20, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 15, borderBottomWidth: 3, borderBottomColor: 'transparent' },
-  tabBtnActive: { borderBottomColor: '#D97706' },
-  tabText: { fontSize: 11, fontWeight: '800', color: '#94A3B8', letterSpacing: 1 },
-  tabTextActive: { color: '#D97706' },
+  content: { padding: 25 },
+  
+  // DISEÑO DE PASAPORTE
+  idCard: { backgroundColor: '#0F172A', borderRadius: 28, overflow: 'hidden', elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+  idCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1E293B', paddingVertical: 12, paddingHorizontal: 20 },
+  idCardTitle: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 2 },
+  idCardBody: { flexDirection: 'row', padding: 20, gap: 20 },
+  idPhotoBox: { width: 90, height: 110, backgroundColor: '#FFFFFF', borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#334155' },
+  idInfoGrid: { flex: 1, gap: 10 },
+  infoItem: { marginBottom: 2 },
+  infoLabel: { fontSize: 8, fontWeight: '800', color: '#D97706' },
+  infoValue: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase' },
 
-  bookletContent: { padding: 15, paddingBottom: 40 },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#0F172A', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 5 },
-  thText: { flex: 1, color: '#FFFFFF', fontSize: 9, fontWeight: '800', textAlign: 'center' },
-  tableRow: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  tdTextDate: { flex: 1, fontSize: 11, fontWeight: '700', color: '#64748B', textAlign: 'center', alignSelf: 'center' },
-  tdFirma: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  tabContainer: { flexDirection: 'row', marginTop: 30, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  tabBtn: { flex: 1, paddingVertical: 15, alignItems: 'center' },
+  tabBtnActive: { borderBottomWidth: 3, borderBottomColor: '#D97706' },
+  tabBtnText: { fontSize: 12, fontWeight: '800', color: '#94A3B8' },
+  tabBtnTextActive: { color: '#0F172A' },
 
-  sticker: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderLeftWidth: 5, borderRadius: 6, padding: 6 },
-  stickerText: { fontSize: 11, fontWeight: '800', color: '#0F172A' },
-  barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  stickerSerial: { fontSize: 7, color: '#94A3B8' },
+  recordsTable: { marginTop: 20, borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#F1F5F9' },
+  tableHead: { flexDirection: 'row', backgroundColor: '#F8FAFC', paddingVertical: 12 },
+  th: { flex: 1, fontSize: 10, fontWeight: '800', color: '#64748B', textAlign: 'center' },
+  tableBody: { padding: 30, alignItems: 'center' },
+  emptyMsg: { color: '#94A3B8', fontSize: 13, textAlign: 'center', fontStyle: 'italic' },
 
-  stampContainer: { alignItems: 'center' },
-  stampSignature: { fontSize: 10, fontWeight: '700', color: '#1E3A8A', fontStyle: 'italic' },
-  stampCedula: { fontSize: 7, color: '#64748B' },
-  watermarkContainer: { position: 'absolute', top: 100, left: 0, right: 0, alignItems: 'center', zIndex: -1 }
+  noData: { alignItems: 'center', marginTop: 100 },
+  noDataText: { color: '#64748B', marginTop: 10, fontWeight: '600' }
 });
