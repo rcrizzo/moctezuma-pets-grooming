@@ -14,7 +14,7 @@ export default function CarnetScreen() {
   const [activeTab, setActiveTab] = useState<'vacunas' | 'parasitos'>('vacunas');
   const [registrosMedicos, setRegistrosMedicos] = useState<any[]>([]);
 
-  // 1. Cargar las mascotas del usuario
+  // MASCOTAS DEL USUARIO
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
@@ -44,7 +44,7 @@ export default function CarnetScreen() {
     return () => unsubMascotas();
   }, [petId]);
 
-  // 2. Cargar los registros de la mascota y ordenarlos de forma segura
+  // CARGAR REGISTROS MÉDICOS DE LA MASCOTA SELECCIONADA
   useEffect(() => {
     if (!mascotaSel) {
       setRegistrosMedicos([]);
@@ -56,15 +56,12 @@ export default function CarnetScreen() {
     const unsubCarnets = onSnapshot(qCarnets, (snap) => {
       const historial = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Ordenamiento 100% seguro (sin crasheos por metadatos nulos)
       historial.sort((a: any, b: any) => {
-        // Respaldos de tiempo numérico
         const timeA = a.fechaTimestamp?.seconds || a.createdAt?.seconds || 0;
         const timeB = b.fechaTimestamp?.seconds || b.createdAt?.seconds || 0;
         
         if (timeA !== timeB) return timeB - timeA;
 
-        // Si no hay timestamp válido, ordenamos usando el texto de la fecha de aplicación
         const dateA = typeof a.fechaAplicacion === 'string' ? a.fechaAplicacion : '';
         const dateB = typeof b.fechaAplicacion === 'string' ? b.fechaAplicacion : '';
         return dateB.localeCompare(dateA);
@@ -78,9 +75,9 @@ export default function CarnetScreen() {
     return () => unsubCarnets();
   }, [mascotaSel]);
 
-  // 3. Filtrar según la pestaña activa
+  // FILTRAR REGISTROS SEGÚN TAB ACTIVO
   const registrosFiltrados = registrosMedicos.filter((registro) => {
-    const tipo = registro.tipo || ''; // Evita crasheos si el tipo es undefined
+    const tipo = registro.tipo || '';
     if (activeTab === 'vacunas') {
       return tipo === 'Vacunación' || tipo.toLowerCase().includes('vacuna');
     } else {
@@ -192,7 +189,7 @@ export default function CarnetScreen() {
   );
 }
 
-// Sub-componentes
+// SUBCOMPONENTES PARA LA FICHA TÉCNICA Y LOS TABS
 const InfoItem = ({ label, value }: any) => (
   <View style={styles.infoItem}>
     <Text style={styles.infoLabel}>{label}</Text>

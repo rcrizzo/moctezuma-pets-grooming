@@ -6,7 +6,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false, // <--- Esto desactiva el título superior para TODOS los tabs
+        headerShown: false,
         tabBarActiveTintColor: '#D97706',
         tabBarInactiveTintColor: '#94A3B8',
         tabBarStyle: {
@@ -31,14 +31,12 @@ export default function TabLayout() {
         }} 
       />
       
-      {/* TAB CENTRAL */}
       <Tabs.Screen
         name="carnet"
         options={{
           tabBarLabel: () => null,
           tabBarIcon: ({ focused }) => (
             <View style={[styles.highlightedBtn, { backgroundColor: focused ? '#D97706' : '#0F172A' }]}>
-              {/* Cambia "paw" por el ícono que elijas de la lista de abajo */}
               <Ionicons name="paw" size={28} color="#FFFFFF" />
             </View>
           ),

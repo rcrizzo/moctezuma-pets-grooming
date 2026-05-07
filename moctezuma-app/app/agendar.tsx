@@ -19,7 +19,7 @@ const generarProximosDias = (dias = 30) => {
 
 const meses = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 
-// --- CATÁLOGOS IDÉNTICOS AL DASHBOARD ---
+// CATÁLOGO
 const NIVELES_NUDOS = [
   'Ninguno / Cepillado Normal', 
   'Leve (Superficiales, 10-20%)', 
@@ -62,27 +62,27 @@ export default function AgendarScreen() {
   const [userName, setUserName] = useState(''); 
   const [userId, setUserId] = useState(''); 
 
-  // --- ESTADOS DE DATOS ---
+  // ESTADOS DE DATOS
   const [misMascotas, setMisMascotas] = useState<any[]>([]);
   const [mascotaSel, setMascotaSel] = useState<any | null>(null);
   
-  // Grooming
+  // GROOMING
   const [tipoServicioGrooming, setTipoServicioGrooming] = useState('Baño Básico');
   const [nivelNudosIndex, setNivelNudosIndex] = useState(0); 
   const [extraGrooming, setExtraGrooming] = useState<string[]>([]);
   
-  // Vet y Hospedaje
+  // VETERINARIA Y HOSPEDAJE
   const [notasAdicionales, setNotasAdicionales] = useState('');
   const [guiaAlimentacion, setGuiaAlimentacion] = useState('');
   const [socializacion, setSocializacion] = useState('Amigable');
 
-  // Calendario
+  // CALENDARIO
   const [fechasDisponibles] = useState(generarProximosDias());
   const [fechaSel, setFechaSel] = useState<Date>(fechasDisponibles[0]);
   const [fechaSalidaSel, setFechaSalidaSel] = useState<Date>(fechasDisponibles[1]);
   const [horaSel, setHoraSel] = useState('10:00 AM');
 
-  // --- OBTENER DATOS ---
+  // OBTENER DATOS
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
@@ -104,7 +104,7 @@ export default function AgendarScreen() {
     return () => unsubUser();
   }, []);
 
-  // --- COTIZADOR ---
+  // COTIZADOR
   const calcularPrecio = () => {
     if (servicio !== 'grooming' || !mascotaSel) return 0;
     const talla = mascotaSel.talla || 'Mediano';
@@ -119,13 +119,12 @@ export default function AgendarScreen() {
     return precioBase + recargoMonto + (extraGrooming.length * 50);
   };
 
-  // --- ENVIAR CITA AL DASHBOARD ---
+  // ENVIAR CITA AL DASHBOARD
   const handleAgendar = async () => {
     if (!mascotaSel) return;
     setProcesando(true);
 
     try {
-      // Configuraciones de fecha local segura
       const fYear = fechaSel.getFullYear();
       const fMonth = String(fechaSel.getMonth() + 1).padStart(2, '0');
       const fDay = String(fechaSel.getDate()).padStart(2, '0');
@@ -169,7 +168,7 @@ export default function AgendarScreen() {
             mascotaNombre: mascotaSel.nombre,
             tipo: 'Consulta General',
             servicio: 'Consulta General', 
-            sintomas: [], // Eliminados los tags de síntomas
+            sintomas: [],
             notas: notasAdicionales, 
             fecha: fechaStringLocal,           
             fechaCita: fechaStringLocal,       
@@ -182,7 +181,6 @@ export default function AgendarScreen() {
         }
       } 
       else if (servicio === 'hospedaje') {
-        // Formateo de fecha de salida
         const nYear = fechaSalidaSel.getFullYear();
         const nMonth = String(fechaSalidaSel.getMonth() + 1).padStart(2, '0');
         const nDay = String(fechaSalidaSel.getDate()).padStart(2, '0');
@@ -201,7 +199,7 @@ export default function AgendarScreen() {
           pertenencias: notasAdicionales, 
           notas: notasAdicionales,      
           habitacion: 'Sin Asignar', 
-          estado: 'Pendiente', // El dashboard de logística deberá aprobar esto
+          estado: 'Pendiente',
           fechaTimestamp: Timestamp.fromDate(fechaSel), 
           createdAt: serverTimestamp()
         });
@@ -352,7 +350,6 @@ export default function AgendarScreen() {
   };
 
   const renderFecha = () => {
-    // Si es hospedaje, mostramos Rango de Fechas (Ingreso y Salida)
     if (servicio === 'hospedaje') return (
       <View style={styles.fadeContainer}>
         <Text style={styles.stepTitle}>Fechas de Estancia</Text>
@@ -368,7 +365,6 @@ export default function AgendarScreen() {
                   style={[styles.dateBox, isSelected && styles.dateBoxActive]}
                   onPress={() => {
                     setFechaSel(d);
-                    // Si la fecha de salida seleccionada es menor o igual al ingreso, la recorremos un día adelante automáticamente
                     if (fechaSalidaSel <= d) {
                       const next = new Date(d);
                       next.setDate(next.getDate() + 1);
@@ -405,7 +401,6 @@ export default function AgendarScreen() {
       </View>
     );
 
-    // Si es Veterinaria o Grooming, mostramos Fecha + Horario
     return (
       <View style={styles.fadeContainer}>
         <Text style={styles.stepTitle}>Selecciona el horario</Text>

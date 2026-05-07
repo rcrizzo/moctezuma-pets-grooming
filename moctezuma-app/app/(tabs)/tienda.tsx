@@ -14,7 +14,6 @@ export default function TiendaScreen() {
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');
 
   useEffect(() => {
-    // Escucha dinámica: Si es 'Todas' trae todo, si no, filtra por el campo 'categoria'
     const baseQuery = collection(db, 'inventario');
     const q = categoriaActiva === 'Todas' 
       ? query(baseQuery, orderBy('nombre', 'asc'))
@@ -38,7 +37,7 @@ export default function TiendaScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Selector de Categorías */}
+      {/* SELECTOR DE CATEGORÍAS */}
       <View style={{ marginBottom: 20 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 25 }}>
           {CATEGORIAS.map(cat => (

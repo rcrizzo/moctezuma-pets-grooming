@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs } from 'firebase/firestore'; // Importes añadidos: doc, getDoc
+import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useCart } from '../context/CartContext';
 
@@ -24,16 +24,20 @@ export default function CarritoScreen() {
         return;
       }
 
-      // Obtenemos tu nombre real de la base de datos
-      // Obtenemos tu nombre real buscando el campo 'uid'
       const qUser = query(collection(db, 'usuarios'), where('uid', '==', user.uid));
       const userSnap = await getDocs(qUser);
 
-      const nombreReal = !userSnap.empty ? userSnap.docs[0].data().nombre : "Usuario App";
+      let dashboardId = null;
+      let nombreReal = "Usuario App";
+
+      if (!userSnap.empty) {
+        dashboardId = userSnap.docs[0].id;
+        nombreReal = userSnap.docs[0].data().nombre || "Usuario App";
+      }
 
       const nuevoPedido = {
         clienteId: user.uid,
-        clienteNombre: nombreReal, // ¡Aparecerá correctamente en el Dashboard!
+        clienteNombre: nombreReal,
         items: cartItems.map((item: any) => ({
           id: item.id,
           nombre: item.nombre,
@@ -45,7 +49,30 @@ export default function CarritoScreen() {
         createdAt: serverTimestamp()
       };
 
+      // 1. Guardamos el pedido
       await addDoc(collection(db, 'pedidos'), nuevoPedido);
+
+      // 2. DESCONTAMOS EL STOCK DE FIREBASE EN TIEMPO REAL
+      for (const item of cartItems) {
+        const itemRef = doc(db, 'inventario', item.id);
+        await updateDoc(itemRef, {
+          stock: increment(-item.qty) // Resta la cantidad que compró del inventario
+        });
+      }
+
+      // 3. Enviamos la notificación
+      if (dashboardId) {
+        const detalleArticulos = cartItems.map((item: any) => `x${item.qty} ${item.nombre}`).join(', ');
+        
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: dashboardId,
+          tipo: 'tienda',
+          titulo: 'Pedido Confirmado 🛒',
+          mensaje: `Tu apartado incluye: ${detalleArticulos}. Total a liquidar en mostrador: $${total.toFixed(2)}`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
 
       clearCart();
       Alert.alert(
@@ -77,6 +104,15 @@ export default function CarritoScreen() {
       <ScrollView contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
         {cartItems.map((item: any) => (
           <View key={item.id} style={styles.cartItem}>
+            
+            {/* NUEVO: BOTÓN INDIVIDUAL DE ELIMINAR */}
+            <TouchableOpacity 
+              style={styles.deleteItemBtn} 
+              onPress={() => removeItem(item.id)}
+            >
+              <Ionicons name="remove" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+
             <View style={styles.itemImage}>
               <Ionicons name="cube-outline" size={30} color="#94A3B8" />
             </View>
@@ -134,6 +170,26 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
   cartItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 15, borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: '#F1F5F9' },
+  
+  // ESTILO DEL NUEVO BOTÓN DE ELIMINAR
+  deleteItemBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+  },
+
   itemImage: { width: 60, height: 60, backgroundColor: '#E2E8F0', borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   itemName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
   itemPrice: { fontSize: 14, color: '#D97706', fontWeight: '600', marginTop: 2 },

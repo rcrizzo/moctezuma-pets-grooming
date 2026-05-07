@@ -20,8 +20,9 @@ export default function Hospedaje() {
   const [showModalAprobar, setShowModalAprobar] = useState(false);
   const [showModalFicha, setShowModalFicha] = useState(false);
 
+  // CORRECCIÓN: Agregamos duenoId al estado inicial
   const estadoInicial = {
-    mascotaId: '', mascotaNombre: '', dueñoNombre: '', 
+    duenoId: '', mascotaId: '', mascotaNombre: '', dueñoNombre: '', 
     fechaIngreso: '', fechaSalida: '', 
     guiaAlimentacion: '', 
     nivelSocializacion: 'Amigable', 
@@ -34,12 +35,10 @@ export default function Hospedaje() {
   const [solicitudActiva, setSolicitudActiva] = useState(null);
 
   useEffect(() => {
-    // MASCOTA Y LISTA DE DUEÑOS
     const unsubMascotas = onSnapshot(query(collection(db, 'mascotas')), (snap) => {
       const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMascotas(docs);
       
-      // LISTA ÚNICA DE DUEÑOS PARA EL SELECTOR
       const uniqueOwners = Array.from(new Set(docs.map(m => m.dueñoNombre || m.duenoNombre).filter(Boolean)));
       setDueños(uniqueOwners.sort());
     });
@@ -53,23 +52,34 @@ export default function Hospedaje() {
     return () => { unsubMascotas(); unsubEstancias(); };
   }, []);
 
-  // MANEJADORES DUEÑO -> MASCOTA
   const handleCambioDueño = (nombreDueño) => {
-    setNuevaSolicitud({ ...nuevaSolicitud, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '' });
+    setNuevaSolicitud({ ...nuevaSolicitud, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '', duenoId: '' });
   };
 
   const handleCambioMascota = (mascotaId) => {
     const pet = mascotas.find(m => m.id === mascotaId);
-    setNuevaSolicitud({ ...nuevaSolicitud, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
+    setNuevaSolicitud({ 
+      ...nuevaSolicitud, 
+      mascotaId: mascotaId, 
+      mascotaNombre: pet?.nombre || '',
+      duenoId: pet?.duenoId || pet?.dueñoId || '' // CAPTURAMOS EL ID PARA NOTIFICAR
+    });
   };
 
   // ACCIONES
   const crearSolicitudManual = async (e) => {
     e.preventDefault();
     if (!nuevaSolicitud.mascotaId) return alert("Selecciona un huésped");
+
+    // CORRECCIÓN: Generar el fechaTimestamp local para que aparezca en la app móvil
+    const [year, month, day] = nuevaSolicitud.fechaIngreso.split('-').map(Number);
+    const fechaTimestamp = new Date(year, month - 1, day);
+    fechaTimestamp.setHours(12, 0, 0, 0); // Asumimos Check-in a mediodía por defecto
+
     try {
       await addDoc(collection(db, 'hospedaje'), {
         ...nuevaSolicitud,
+        fechaTimestamp: fechaTimestamp, // ¡Vital para el Home de la app!
         createdAt: serverTimestamp()
       });
       setShowModalSolicitud(false);
@@ -85,6 +95,20 @@ export default function Hospedaje() {
         estado: 'Hospedado',
         aprobadoAt: serverTimestamp()
       });
+
+      // DISPARADOR: Reserva Aprobada
+      if (solicitudActiva.duenoId || solicitudActiva.dueñoId) {
+        const idDueño = solicitudActiva.duenoId || solicitudActiva.dueñoId;
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: idDueño,
+          tipo: 'hospedaje',
+          titulo: 'Reserva de Hospedaje Confirmada 🏨',
+          mensaje: `¡Todo listo! Hemos aprobado la estancia de ${solicitudActiva.mascotaNombre}. Se le ha asignado: ${solicitudActiva.habitacion}.`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalAprobar(false);
     } catch (err) { console.error(err); }
   };
@@ -92,6 +116,20 @@ export default function Hospedaje() {
   const rechazarReserva = async (id) => {
     if(window.confirm("¿Estás seguro de rechazar esta solicitud de hospedaje? Se notificará al cliente.")){
       await updateDoc(doc(db, 'hospedaje', id), { estado: 'Rechazado' });
+      
+      // DISPARADOR: Reserva Rechazada
+      if (solicitudActiva && (solicitudActiva.duenoId || solicitudActiva.dueñoId)) {
+        const idDueño = solicitudActiva.duenoId || solicitudActiva.dueñoId;
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: idDueño,
+          tipo: 'sistema',
+          titulo: 'Actualización de Reserva',
+          mensaje: `Lo sentimos, por el momento no pudimos confirmar la solicitud de hospedaje para ${solicitudActiva.mascotaNombre}. Por favor, contáctanos para más detalles.`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalAprobar(false);
     }
   };
@@ -99,6 +137,20 @@ export default function Hospedaje() {
   const darDeAlta = async (id) => {
     if (window.confirm("¿Confirmas la salida de la mascota?")) {
       await updateDoc(doc(db, 'hospedaje', id), { estado: 'Finalizado', salidaReal: serverTimestamp() });
+      
+      // DISPARADOR: Check-out
+      if (solicitudActiva && (solicitudActiva.duenoId || solicitudActiva.dueñoId)) {
+        const idDueño = solicitudActiva.duenoId || solicitudActiva.dueñoId;
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: idDueño,
+          tipo: 'hospedaje',
+          titulo: 'Check-out Exitoso ✅',
+          mensaje: `${solicitudActiva.mascotaNombre} ha finalizado su estancia. ¡Gracias por confiar en Moctezuma Pet's!`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalFicha(false);
     }
   };
@@ -297,7 +349,6 @@ export default function Hospedaje() {
         <Modal.Body className="p-4">
           <Form onSubmit={crearSolicitudManual}>
             
-            {/* LÓGICA DUEÑO -> MASCOTA INTEGRADA */}
             <Row className="mb-3">
               <Col md={6}>
                 <Form.Label className="custom-label">Dueño (Cliente)</Form.Label>

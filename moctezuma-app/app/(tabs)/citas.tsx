@@ -10,7 +10,7 @@ export default function CitasScreen() {
   const [listaCitas, setListaCitas] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
 
-  // Estados temporales para unir las 3 categorías en tiempo real
+  // ESTADOS TEMPORALES
   const [rawG, setRawG] = useState<any[]>([]);
   const [rawV, setRawV] = useState<any[]>([]);
   const [rawH, setRawH] = useState<any[]>([]);
@@ -19,17 +19,14 @@ export default function CitasScreen() {
     const user = auth.currentUser;
     if (!user) return;
 
-    // 1. Encontrar el dashboardId del usuario
     const qUser = query(collection(db, 'usuarios'), where('uid', '==', user.uid));
     const unsubUser = onSnapshot(qUser, (userSnap) => {
       if (!userSnap.empty) {
         const dashboardId = userSnap.docs[0].id;
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
-
-        // 2. Escuchas en tiempo real para las 3 categorías (Sin límite de 1)
         
-        // Grooming
+        // GROOMING
         const qG = query(
           collection(db, 'grooming'),
           where('duenoId', '==', dashboardId),
@@ -40,7 +37,7 @@ export default function CitasScreen() {
             id: d.id, ...d.data(), cat: 'Grooming', icon: 'cut', color: '#D97706', bgColor: '#FEF3C7' 
         }))));
 
-        // Veterinaria
+        // VETERINARIA
         const qV = query(
           collection(db, 'consultas'),
           where('duenoId', '==', dashboardId),
@@ -51,7 +48,7 @@ export default function CitasScreen() {
             id: d.id, ...d.data(), cat: 'Veterinaria', icon: 'medical', color: '#0284C7', bgColor: '#E0F2FE' 
         }))));
 
-        // Hospedaje
+        // HOSPEDAJE
         const qH = query(
           collection(db, 'hospedaje'),
           where('duenoId', '==', dashboardId),
@@ -69,18 +66,16 @@ export default function CitasScreen() {
     return () => unsubUser();
   }, []);
 
-  // 3. Procesar y mezclar todas las citas cada vez que cambie alguna categoría
   useEffect(() => {
     const todas = [...rawG, ...rawV, ...rawH];
     
-    // Ordenar todas las citas por el timestamp de forma ascendente
+    // ORDENAR DE FORMA ASCENDENTE
     todas.sort((a, b) => (a.fechaTimestamp?.seconds || 0) - (b.fechaTimestamp?.seconds || 0));
     
     setListaCitas(todas);
     setCargando(false);
   }, [rawG, rawV, rawH]);
 
-  // Utilidades de formato
   const getDia = (ts: any) => ts?.toDate ? ts.toDate().getDate().toString().padStart(2, '0') : '--';
   const getMes = (ts: any) => {
     if (!ts?.toDate) return '---';

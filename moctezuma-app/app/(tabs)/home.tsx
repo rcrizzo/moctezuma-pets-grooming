@@ -26,12 +26,12 @@ export default function HomeScreen() {
         setUserName(userDoc.data().nombre?.split(' ')[0] || 'Usuario');
         const dId = userDoc.id;
 
-        // 1. Cargar mascotas
+        // CARGAR MASCOTAS
         const qM = query(collection(db, 'mascotas'), where('duenoId', '==', dId));
         const mSnap = await getDocs(qM);
         setMisMascotas(mSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        // 2. Cargar Citas (Sin filtros de fecha para captar lo manual del Dashboard)
+        // CARGAR CITAS
         const qG = query(collection(db, 'grooming'), where('duenoId', '==', dId));
         const qV = query(collection(db, 'consultas'), where('dueñoId', '==', dId));
         const qH = query(collection(db, 'hospedaje'), where('dueñoId', '==', dId));
@@ -47,9 +47,8 @@ export default function HomeScreen() {
           const hoy = new Date();
           hoy.setHours(0, 0, 0, 0);
 
-          // Procesamos las fechas para que el celular entienda tanto el objeto de Firebase como el texto manual
           const citasProcesadas = todas.map(cita => {
-            let fechaFinal = new Date(0); // Fecha por defecto muy vieja
+            let fechaFinal = new Date(0);
 
             const fStr = cita.fecha || cita.fechaCita || cita.fechaIngreso;
             if (fStr && typeof fStr === 'string' && fStr.includes('-')) {
@@ -73,7 +72,6 @@ export default function HomeScreen() {
             return { ...cita, fechaReal: fechaFinal };
           });
 
-          // Filtramos y ordenamos localmente
           const futuras = citasProcesadas
             .filter(c => c.fechaReal >= hoy)
             .sort((a, b) => a.fechaReal.getTime() - b.fechaReal.getTime());
@@ -168,9 +166,6 @@ export default function HomeScreen() {
             <View style={[styles.emptyCard, { marginBottom: 35 }]}>
               <Ionicons name="calendar-outline" size={32} color="#CBD5E1" />
               <Text style={styles.emptyText}>No tienes citas agendadas próximamente</Text>
-              <TouchableOpacity style={styles.bookBtn} onPress={() => router.push('/agendar')}>
-                <Text style={styles.bookBtnText}>Agendar ahora</Text>
-              </TouchableOpacity>
             </View>
           )}
         </View>

@@ -5,8 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase'; // Ruta a firebase.ts
-import { useCart } from '../../context/CartContext'; // Importamos el carrito
+import { db } from '../../firebase';
+import { useCart } from '../../context/CartContext';
 
 export default function DetalleProducto() {
   const { id } = useLocalSearchParams();
@@ -14,7 +14,7 @@ export default function DetalleProducto() {
   const [producto, setProducto] = useState<any>(null);
   const [cargando, setCargando] = useState(true);
   
-  const { addToCart } = useCart(); // Extraemos la función de agregar
+  const { addToCart } = useCart();
 
   useEffect(() => {
     const fetchProducto = async () => {
@@ -80,8 +80,13 @@ export default function DetalleProducto() {
                 <Ionicons name="remove" size={20} color="#0F172A" />
               </TouchableOpacity>
               <Text style={{ paddingHorizontal: 15, fontWeight: '800', fontSize: 16 }}>{cantidad}</Text>
-              <TouchableOpacity style={styles.counterBtn} onPress={() => setCantidad(c => c + 1)}>
-                <Ionicons name="add" size={20} color="#0F172A" />
+              
+              {/* LÍMITE DE STOCK IMPLEMENTADO AQUÍ */}
+              <TouchableOpacity 
+                style={styles.counterBtn} 
+                onPress={() => setCantidad(c => c < producto.stock ? c + 1 : c)}
+              >
+                <Ionicons name="add" size={20} color={cantidad >= producto.stock ? "#CBD5E1" : "#0F172A"} />
               </TouchableOpacity>
             </View>
             <Text style={{ color: '#64748B', fontWeight: '600' }}>En stock: {producto.stock || 0}</Text>
@@ -94,7 +99,7 @@ export default function DetalleProducto() {
           style={[styles.addBtn, producto.stock <= 0 && { backgroundColor: '#94A3B8' }]}
           disabled={producto.stock <= 0}
           onPress={() => {
-            addToCart(producto, cantidad, precioReal); // <-- ¡Agregamos a la memoria global!
+            addToCart(producto, cantidad, precioReal);
             router.back(); 
           }}
         >

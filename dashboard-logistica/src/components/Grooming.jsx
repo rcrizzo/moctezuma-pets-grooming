@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Modal, Form, Table, Spinner, Badge, Card, Button } from 'react-bootstrap';
-import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { IoCut, IoSearch, IoAdd, IoEye, IoTime, IoWarning, IoCheckmarkCircle, IoCheckmarkDone, IoTrash, IoWater } from 'react-icons/io5';
 
@@ -78,7 +78,6 @@ export default function Grooming() {
       setDueños(uniqueOwners.sort());
     });
 
-    // ESCUCHAR CITAS
     const qCitas = query(collection(db, 'grooming'), orderBy('fechaRegistro', 'desc'));
     const unsubCitas = onSnapshot(qCitas, (snapshot) => {
       setCitasGrooming(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -88,7 +87,6 @@ export default function Grooming() {
     return () => { unsubMascotas(); unsubCitas(); };
   }, []);
 
-  // LÓGICA DE COTIZACIÓN
   const calcularPrecio = (mascotaId, servicioNombre, indiceNudos) => {
     const mascota = mascotas.find(m => m.id === mascotaId);
     if (!mascota || !mascota.talla || !mascota.tipoPelo) return 0;
@@ -119,7 +117,7 @@ export default function Grooming() {
       const mascotaSel = mascotas.find(m => m.id === valor);
       if (mascotaSel) {
         turnoActualizado.mascotaNombre = mascotaSel.nombre;
-        turnoActualizado.duenoId = mascotaSel.duenoId || ''; // <--- ¡AQUÍ CAPTURAMOS EL ID DEL DUEÑO!
+        turnoActualizado.duenoId = mascotaSel.duenoId || ''; 
       }
     }
 
@@ -132,24 +130,20 @@ export default function Grooming() {
     setNuevoTurno(turnoActualizado);
   };
 
+  // GENERAR NOTIFICACIÓN DE AGENDAR
   const handleAgendarTurno = async (e) => {
     e.preventDefault();
     if(!nuevoTurno.mascotaId || !nuevoTurno.horario || !nuevoTurno.fecha) {
       return alert('Por favor selecciona la mascota, fecha y horario.');
     }
     
-    // 1. Procesar la hora
     const [time, modifier] = nuevoTurno.horario.split(' ');
     let [hours, minutes] = time.split(':');
     let h = parseInt(hours, 10);
     if (h === 12) h = 0;
     if (modifier === 'PM') h += 12;
 
-    // 2. CORRECCIÓN CLAVE: Separar la fecha para evitar el salto de zona horaria
-    // Al usar split, obligamos a JS a usar el calendario local del navegador
     const [year, month, day] = nuevoTurno.fecha.split('-').map(Number);
-    
-    // Creamos el objeto fecha en hora local (el mes es 0-indexado, por eso -1)
     const fechaTimestamp = new Date(year, month - 1, day); 
     fechaTimestamp.setHours(h, parseInt(minutes, 10), 0, 0);
 
@@ -157,8 +151,21 @@ export default function Grooming() {
       await addDoc(collection(db, 'grooming'), {
         ...nuevoTurno,
         fechaRegistro: new Date().toISOString(),
-        fechaTimestamp: fechaTimestamp // Ahora sí se guardará con el día correcto
+        fechaTimestamp: fechaTimestamp 
       });
+
+      // DISPARADOR DE NOTIFICACIÓN DE CITA CONFIRMADA
+      if (nuevoTurno.duenoId) {
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: nuevoTurno.duenoId,
+          tipo: 'grooming',
+          titulo: 'Cita de Estética Confirmada',
+          mensaje: `Tu cita para ${nuevoTurno.mascotaNombre} quedó agendada el día ${nuevoTurno.fecha} a las ${nuevoTurno.horario}.`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalTurno(false);
       setNuevoTurno(estadoInicial);
     } catch (error) { 
@@ -166,9 +173,38 @@ export default function Grooming() {
     }
   };
 
+  // GENERAR NOTIFICACIÓN DE ESTADO ACTUALIZADO
   const cambiarEstado = async (id, nuevoEstado) => {
     try {
       await updateDoc(doc(db, 'grooming', id), { estado: nuevoEstado });
+      
+      if (citaActiva && citaActiva.duenoId) {
+        let mensaje = '';
+        let titulo = '';
+
+        if (nuevoEstado === 'En la Mesa (Proceso)') {
+          titulo = '¡Comenzando el Baño!';
+          mensaje = `El servicio de estética para ${citaActiva.mascotaNombre} acaba de comenzar. Te avisaremos cuando esté listo.`;
+        } else if (nuevoEstado === 'Listo para Recoger') {
+          titulo = '¡Tu mascota está lista! ✨';
+          mensaje = `${citaActiva.mascotaNombre} ya terminó su sesión de estética y está listo(a) para que pases a recogerlo(a).`;
+        } else if (nuevoEstado === 'Entregado') {
+          titulo = 'Servicio Completado';
+          mensaje = `Gracias por confiar en Moctezuma Pet's Grooming para el cuidado de ${citaActiva.mascotaNombre}.`;
+        }
+
+        if (mensaje) {
+          await addDoc(collection(db, 'notificaciones'), {
+            duenoId: citaActiva.duenoId,
+            tipo: 'grooming',
+            titulo: titulo,
+            mensaje: mensaje,
+            leida: false,
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+
       if(nuevoEstado === 'Entregado') setShowModalFicha(false);
     } catch (error) { 
       console.error(error); 
@@ -178,6 +214,18 @@ export default function Grooming() {
   const eliminarCita = async (id) => {
     if(window.confirm('¿Cancelar permanentemente este turno?')) {
       await deleteDoc(doc(db, 'grooming', id));
+      
+      if (citaActiva && citaActiva.duenoId) {
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: citaActiva.duenoId,
+          tipo: 'sistema',
+          titulo: 'Cita Cancelada',
+          mensaje: `La cita de estética para ${citaActiva.mascotaNombre} ha sido cancelada por nuestro personal.`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalFicha(false);
     }
   };
@@ -189,7 +237,6 @@ export default function Grooming() {
     setShowModalFicha(true);
   };
 
-  // KPIS DE LOS CONTENEDORES
   const conteoPendientes = citasGrooming.filter(c => c.estado === 'Pendiente').length;
   const conteoEnMesa = citasGrooming.filter(c => c.estado === 'En la Mesa (Proceso)').length;
   const conteoListos = citasGrooming.filter(c => c.estado === 'Listo para Recoger').length;
@@ -329,7 +376,6 @@ export default function Grooming() {
         <Modal.Body className="p-4">
           <Form onSubmit={handleAgendarTurno}>
             
-            {/* LÓGICA DUEÑO -> MASCOTA */}
             <Row>
               <Col md={6}>
                 <Form.Group className="mb-3">
@@ -439,7 +485,6 @@ export default function Grooming() {
                 </Form.Group>
               </Col>
               
-              {/* DISPLAY DEL PRECIO COTIZADO */}
               <Col md={4}>
                 <div className="p-3 bg-white rounded text-center border shadow-sm">
                   <small className="text-success fw-bold d-block mb-1 text-uppercase" style={{fontSize: '11px'}}>Costo Estimado</small>
@@ -496,13 +541,11 @@ export default function Grooming() {
                 </Col>
               </Row>
 
-              {/* COBRO */}
               <div className="text-center mb-4">
                  <small className="fw-bold text-muted text-uppercase d-block mb-1">Monto a Cobrar</small>
                  <h2 className="fw-bold text-success m-0">${citaActiva.precioCalculado?.toFixed(2)}</h2>
               </div>
 
-              {/* CONTROLES DE ESTADO */}
               <div className="text-center mb-3">
                 <small className="fw-bold text-muted d-block mb-2 text-uppercase">Actualizar Flujo de Trabajo</small>
               </div>

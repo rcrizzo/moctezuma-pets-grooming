@@ -28,14 +28,13 @@ export default function Veterinaria() {
   const [showModalAtender, setShowModalAtender] = useState(false);
   const [showModalDetalle, setShowModalDetalle] = useState(false);
 
-  // CORRECCIÓN 1: Agregar duenoId (sin ñ) al estado inicial
   const [nuevaCita, setNuevaCita] = useState({
     duenoId: '', mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Consulta General',
     sintomas: [], notas: '', fechaCita: '', horaCita: '', estado: 'Pendiente'
   });
 
   const [nuevoSello, setNuevoSello] = useState({
-    mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Vacunación', producto: '', 
+    duenoId: '', mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Vacunación', producto: '', 
     lote: '', mvz: 'MVZ. López S.', cedula: '11536014', proximaDosis: ''
   });
 
@@ -51,13 +50,11 @@ export default function Veterinaria() {
       setDueños(uniqueOwners.sort());
     });
 
-    // CONSULTAS
     const qConsultas = query(collection(db, 'consultas'), orderBy('createdAt', 'desc'));
     const unsubConsultas = onSnapshot(qConsultas, (snap) => {
       setCitas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // CARTILLA
     const qCarnets = query(collection(db, 'carnets'), orderBy('createdAt', 'desc'));
     const unsubCarnets = onSnapshot(qCarnets, (snap) => {
       setPreventivos(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -74,7 +71,6 @@ export default function Veterinaria() {
 
   const handleCambioMascotaCita = (mascotaId) => {
     const pet = mascotas.find(m => m.id === mascotaId);
-    // CORRECCIÓN 2: Capturar el ID del dueño al seleccionar la mascota
     setNuevaCita({ 
       ...nuevaCita, 
       mascotaId: mascotaId, 
@@ -84,12 +80,17 @@ export default function Veterinaria() {
   };
 
   const handleCambioDueñoSello = (nombreDueño) => {
-    setNuevoSello({ ...nuevoSello, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '' });
+    setNuevoSello({ ...nuevoSello, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '', duenoId: '' });
   };
 
   const handleCambioMascotaSello = (mascotaId) => {
     const pet = mascotas.find(m => m.id === mascotaId);
-    setNuevoSello({ ...nuevoSello, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
+    setNuevoSello({ 
+      ...nuevoSello, 
+      mascotaId: mascotaId, 
+      mascotaNombre: pet?.nombre || '',
+      duenoId: pet?.duenoId || pet?.dueñoId || ''
+    });
   };
 
   // FUNCIONES DE ACCIÓN
@@ -103,7 +104,6 @@ export default function Veterinaria() {
     if (h === 12) h = 0;
     if (modifier === 'PM') h += 12;
 
-    // CORRECCIÓN 3: Separar la fecha para evitar el salto de zona horaria a un día antes
     const [year, month, day] = nuevaCita.fechaCita.split('-').map(Number);
     const fechaTimestamp = new Date(year, month - 1, day);
     fechaTimestamp.setHours(h, parseInt(minutes, 10), 0, 0);
@@ -114,6 +114,19 @@ export default function Veterinaria() {
         fechaTimestamp: fechaTimestamp,
         createdAt: serverTimestamp()
       });
+
+      // DISPARADOR: Notificación de Cita Veterinaria Agendada
+      if (nuevaCita.duenoId) {
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: nuevaCita.duenoId,
+          tipo: 'veterinaria',
+          titulo: 'Consulta Veterinaria Agendada',
+          mensaje: `Se ha agendado una consulta para ${nuevaCita.mascotaNombre} el día ${nuevaCita.fechaCita} a las ${nuevaCita.horaCita}.`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalNuevaCita(false);
       setNuevaCita({
         duenoId: '', mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Consulta General',
@@ -131,8 +144,21 @@ export default function Veterinaria() {
         fechaAplicacion: new Date().toLocaleDateString('es-MX'),
         createdAt: serverTimestamp()
       });
+
+      // DISPARADOR: Notificación de Vacuna/Desparasitación
+      if (nuevoSello.duenoId) {
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: nuevoSello.duenoId,
+          tipo: 'veterinaria',
+          titulo: 'Cartilla Actualizada 💉',
+          mensaje: `Se ha aplicado ${nuevoSello.producto} (${nuevoSello.tipo}) a ${nuevoSello.mascotaNombre}. Próxima dosis: ${nuevoSello.proximaDosis}.`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalSellar(false);
-      setNuevoSello({ ...nuevoSello, mascotaId: '', mascotaNombre: '', dueñoNombre: '', producto: '', lote: '', proximaDosis: '' });
+      setNuevoSello({ duenoId: '', mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Vacunación', producto: '', lote: '', mvz: 'MVZ. López S.', cedula: '11536014', proximaDosis: '' });
     } catch (err) { console.error(err); }
   };
 
@@ -144,13 +170,26 @@ export default function Veterinaria() {
         estado: 'Completada',
         finalizadoAt: serverTimestamp()
       });
+
+      // DISPARADOR: Notificación de Consulta Finalizada
+      if (citaActiva && citaActiva.duenoId) {
+        await addDoc(collection(db, 'notificaciones'), {
+          duenoId: citaActiva.duenoId,
+          tipo: 'veterinaria',
+          titulo: 'Consulta Finalizada 🩺',
+          mensaje: `El diagnóstico y tratamiento de ${citaActiva.mascotaNombre} ya están disponibles en su expediente clínico digital.`,
+          leida: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
       setShowModalAtender(false);
     } catch (err) { console.error(err); }
   };
 
   return (
     <div>
-      {/* SECCIÓN SUPERIOR: MONITOR */}
+      {/* SECCIÓN SUPERIOR */}
       <Row className="mb-4 gx-4">
         <Col lg={8}>
           <div className="glass-card p-4 h-100" style={{borderLeft: '4px solid var(--accent)'}}>
