@@ -4,7 +4,6 @@ import { auth } from './firebase';
 import { Spinner } from 'react-bootstrap';
 import { IoPaw, IoBarChart, IoCut, IoMedical, IoBed, IoPeople, IoStorefront, IoLogOut } from 'react-icons/io5';
 
-// Componentes
 import Login from './components/LogIn';
 import Resumen from './components/Resumen';
 import Grooming from './components/Grooming';
@@ -52,7 +51,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* SIDEBAR FIJO: Nunca desaparece al cambiar de vistas */}
+      {/* SIDEBAR FIJO */}
       <aside className="sidebar pt-4 d-flex flex-column" style={{ overflowY: 'auto' }}>
         <div className="px-4 mb-4 d-flex align-items-center gap-3">
           <IoPaw size={28} color="var(--accent)" />
@@ -85,7 +84,6 @@ function App() {
           <div className={`nav-item-custom ${vistaActual === 'mascotas' ? 'active' : ''}`} onClick={() => setVistaActual('mascotas')}>
             <IoPaw size={18} /> Perfiles Mascotas
           </div>
-          {/* Al darle click al inventario, o si estás en pedidos, mantiene iluminada esta sección */}
           <div className={`nav-item-custom ${vistaActual === 'inventario' || vistaActual === 'pedidos' ? 'active' : ''}`} onClick={() => setVistaActual('inventario')}>
             <IoStorefront size={18} /> Inventario y Tienda
           </div>
@@ -103,15 +101,6 @@ function App() {
           <h2 className="m-0 fw-bold" style={{fontSize: '22px', color: 'var(--text-dark)'}}>
             {vistaActual === 'pedidos' ? 'Bandeja de Pedidos' : 'Panel Administrativo'}
           </h2>
-          <div className="d-flex align-items-center gap-3">
-            <div className="text-end">
-              <p className="m-0 fw-bold" style={{fontSize: '14px'}}>Administrador</p>
-              <p className="m-0 text-muted" style={{fontSize: '12px'}}>{usuario.email}</p>
-            </div>
-            <div style={{width: '44px', height: '44px', borderRadius: '12px', backgroundColor: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '18px'}}>
-              {usuario.email.charAt(0).toUpperCase()}
-            </div>
-          </div>
         </header>
 
         <section className="content-area">
@@ -122,7 +111,6 @@ function App() {
           {vistaActual === 'clientes' && <Clientes />}
           {vistaActual === 'mascotas' && <Mascotas />}
           
-          {/* PASAMOS LA FUNCIÓN setVistaActual A TUS COMPONENTES ORIGINALES */}
           {vistaActual === 'inventario' && <Inventario setVistaActual={setVistaActual} />}
           {vistaActual === 'pedidos' && <Pedidos setVistaActual={setVistaActual} />}
         </section>

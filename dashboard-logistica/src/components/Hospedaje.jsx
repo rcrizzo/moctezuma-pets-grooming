@@ -4,13 +4,13 @@ import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serve
 import { db } from '../firebase';
 import { IoHome, IoSearch, IoAdd, IoEye, IoBed, IoRestaurant, IoCalendarOutline, IoCheckmarkDone, IoTrash, IoNotifications, IoCloseCircle, IoAlertCircle } from 'react-icons/io5';
 
-// --- CATÁLOGOS ---
+// CATÁLOGOS
 const TIPOS_HABITACION = ['Corral General', 'Jaula Individual', 'Suite Premium', 'Área de Gatos'];
 const NIVELES_SOCIALIZACION = ['Amigable', 'Reactivo', 'Miedoso'];
 
 export default function Hospedaje() {
   const [mascotas, setMascotas] = useState([]);
-  const [dueños, setDueños] = useState([]); // <-- NUEVO: Estado para lista de dueños
+  const [dueños, setDueños] = useState([]);
   const [estancias, setEstancias] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -34,12 +34,12 @@ export default function Hospedaje() {
   const [solicitudActiva, setSolicitudActiva] = useState(null);
 
   useEffect(() => {
-    // 1. Escuchar Mascotas y extraer lista de Dueños
+    // MASCOTA Y LISTA DE DUEÑOS
     const unsubMascotas = onSnapshot(query(collection(db, 'mascotas')), (snap) => {
       const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMascotas(docs);
       
-      // Extraemos la lista única de dueños
+      // LISTA ÚNICA DE DUEÑOS PARA EL SELECTOR
       const uniqueOwners = Array.from(new Set(docs.map(m => m.dueñoNombre || m.duenoNombre).filter(Boolean)));
       setDueños(uniqueOwners.sort());
     });
@@ -53,7 +53,7 @@ export default function Hospedaje() {
     return () => { unsubMascotas(); unsubEstancias(); };
   }, []);
 
-  // --- MANEJADORES DUEÑO -> MASCOTA ---
+  // MANEJADORES DUEÑO -> MASCOTA
   const handleCambioDueño = (nombreDueño) => {
     setNuevaSolicitud({ ...nuevaSolicitud, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '' });
   };
@@ -63,7 +63,7 @@ export default function Hospedaje() {
     setNuevaSolicitud({ ...nuevaSolicitud, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
   };
 
-  // --- ACCIONES ---
+  // ACCIONES
   const crearSolicitudManual = async (e) => {
     e.preventDefault();
     if (!nuevaSolicitud.mascotaId) return alert("Selecciona un huésped");
@@ -80,7 +80,6 @@ export default function Hospedaje() {
   const aprobarReserva = async (e) => {
     e.preventDefault();
     try {
-      // Al cambiar el estado a 'Hospedado', el Resumen lo detectará automáticamente
       await updateDoc(doc(db, 'hospedaje', solicitudActiva.id), {
         habitacion: solicitudActiva.habitacion,
         estado: 'Hospedado',
@@ -104,7 +103,7 @@ export default function Hospedaje() {
     }
   };
 
-  // Filtros rápidos
+  // FILTROS
   const solicitudes = estancias.filter(e => e.estado === 'Pendiente');
   const huespedes = estancias.filter(e => e.estado === 'Hospedado');
   const fechaHoy = new Date().toISOString().split('T')[0];
@@ -115,7 +114,7 @@ export default function Hospedaje() {
     return 'info'; 
   };
 
-  // 0. PANTALLA DE CARGA
+  // PANTALLA DE CARGA
   if (cargando) {
     return (
       <div className="d-flex flex-column justify-content-center align-items-center" style={{ height: '70vh' }}>
@@ -127,7 +126,6 @@ export default function Hospedaje() {
 
   return (
     <div className="animate__animated animate__fadeIn">
-      {/* 1. DASHBOARD SUPERIOR */}
       <Row className="mb-4 gx-3">
         <Col md={4}>
           <div className="glass-card p-4 h-100 d-flex flex-column justify-content-center" style={{borderLeft: '4px solid #F59E0B'}}>
@@ -160,7 +158,7 @@ export default function Hospedaje() {
         </Col>
       </Row>
 
-      {/* 2. BANDEJA DE ENTRADA (SOLICITUDES DE LA APP) */}
+      {/* BANDEJA DE ENTRADA (SOLICITUDES DE LA APP) */}
       <h5 className="fw-bold mb-3 mt-2 d-flex align-items-center gap-2">
         <IoNotifications color="#F59E0B" /> Bandeja de Solicitudes (App)
       </h5>
@@ -178,7 +176,6 @@ export default function Hospedaje() {
               </div>
               <button 
                 onClick={() => {
-                  // MEJORA: Pre-selecciona Jaula Individual si es Reactivo
                   const habitacionSugerida = sol.nivelSocializacion === 'Reactivo' ? 'Jaula Individual' : 'Corral General';
                   setSolicitudActiva({...sol, habitacion: habitacionSugerida}); 
                   setShowModalAprobar(true);
@@ -194,7 +191,7 @@ export default function Hospedaje() {
         )}
       </Row>
 
-      {/* 3. CONTROL DE HABITACIONES (HUÉSPEDES ACTIVOS) */}
+      {/* CONTROL DE HABITACIONES (HUÉSPEDES ACTIVOS) */}
       <div className="glass-card mb-4">
         <div className="p-4 border-bottom d-flex justify-content-between align-items-center">
           <h5 className="fw-bold m-0 d-flex align-items-center gap-2"><IoBed color="var(--accent)"/> Huéspedes en Instalaciones</h5>
@@ -242,7 +239,7 @@ export default function Hospedaje() {
         </Table>
       </div>
 
-      {/* --- MODAL 1: APROBAR SOLICITUD DE LA APP --- */}
+      {/* APROBAR SOLICITUD DE LA APP */}
       <Modal show={showModalAprobar} onHide={() => setShowModalAprobar(false)} centered size="lg">
         <Modal.Header closeButton className="bg-light"><Modal.Title className="fw-bold">Evaluar Solicitud de Reserva</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
@@ -294,7 +291,7 @@ export default function Hospedaje() {
         </Modal.Body>
       </Modal>
 
-      {/* --- MODAL 2: NUEVA SOLICITUD MANUAL (Mostrador) --- */}
+      {/* NUEVA SOLICITUD MANUAL */}
       <Modal show={showModalSolicitud} onHide={() => setShowModalSolicitud(false)} centered size="lg">
         <Modal.Header closeButton><Modal.Title className="fw-bold">Ingreso Manual (Recepción)</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
@@ -357,7 +354,7 @@ export default function Hospedaje() {
         </Modal.Body>
       </Modal>
 
-      {/* --- MODAL 3: FICHA DE HUÉSPED Y CHECK-OUT --- */}
+      {/* FICHA DE HUÉSPED Y CHECK-OUT */}
       <Modal show={showModalFicha} onHide={() => setShowModalFicha(false)} centered size="lg">
         <Modal.Header closeButton><Modal.Title className="fw-bold">Ficha de Huésped</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">

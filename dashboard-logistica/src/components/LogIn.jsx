@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Spinner } from 'react-bootstrap';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
-import { IoPaw } from 'react-icons/io5'; // <-- Importamos Ionicons
+import { IoPaw } from 'react-icons/io5';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -29,7 +29,7 @@ export default function Login() {
       <div className="glass-card shadow-lg" style={{ maxWidth: '450px', width: '100%', padding: '50px 40px' }}>
         
         <div className="text-center mb-5">
-          <IoPaw size={54} color="var(--accent)" /> {/* <-- Ícono vectorial */}
+          <IoPaw size={54} color="var(--accent)" />
           <h2 className="fw-bold mt-3" style={{color: 'var(--text-dark)'}}>Moctezuma Pet's Grooming</h2>
           <p className="text-muted">Acceso exclusivo para personal</p>
         </div>

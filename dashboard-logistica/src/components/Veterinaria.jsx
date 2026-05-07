@@ -4,11 +4,11 @@ import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, serve
 import { db } from '../firebase';
 import { IoCalendar, IoShieldCheckmark, IoSearch, IoAdd, IoEye, IoPencil, IoTrash, IoTime } from 'react-icons/io5';
 
-// --- CATÁLOGOS SINCRONIZADOS ---
+// CATÁLOGOS
 const TIPOS_PREVENTIVO = ['Vacunación', 'Desparasitación Interna', 'Desparasitación Externa'];
 const PRODUCTOS_ESTANDAR = ['Sextuple Canine', 'Triple Felina', 'Rabia', 'Bordetella', 'Giardia', 'Endogard', 'Simparica', 'Bravecto'];
 
-// HORARIOS UNIFICADOS (10:00 AM a 7:00 PM)
+// HORARIOS 10:00 AM a 7:00 PM
 const HORARIOS_DISPONIBLES = [
   '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', 
   '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', 
@@ -28,8 +28,9 @@ export default function Veterinaria() {
   const [showModalAtender, setShowModalAtender] = useState(false);
   const [showModalDetalle, setShowModalDetalle] = useState(false);
 
+  // CORRECCIÓN 1: Agregar duenoId (sin ñ) al estado inicial
   const [nuevaCita, setNuevaCita] = useState({
-    mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Consulta General',
+    duenoId: '', mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Consulta General',
     sintomas: [], notas: '', fechaCita: '', horaCita: '', estado: 'Pendiente'
   });
 
@@ -42,7 +43,6 @@ export default function Veterinaria() {
   const [citaSeleccionada, setCitaSeleccionada] = useState(null);
 
   useEffect(() => {
-    // 1. Escuchar Mascotas y extraer Dueños
     const unsubMascotas = onSnapshot(query(collection(db, 'mascotas')), (snap) => {
       const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMascotas(docs);
@@ -51,13 +51,13 @@ export default function Veterinaria() {
       setDueños(uniqueOwners.sort());
     });
 
-    // 2. Escuchar Consultas
+    // CONSULTAS
     const qConsultas = query(collection(db, 'consultas'), orderBy('createdAt', 'desc'));
     const unsubConsultas = onSnapshot(qConsultas, (snap) => {
       setCitas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 3. Escuchar Preventivos (Cartilla)
+    // CARTILLA
     const qCarnets = query(collection(db, 'carnets'), orderBy('createdAt', 'desc'));
     const unsubCarnets = onSnapshot(qCarnets, (snap) => {
       setPreventivos(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -67,14 +67,20 @@ export default function Veterinaria() {
     return () => { unsubMascotas(); unsubConsultas(); unsubCarnets(); };
   }, []);
 
-  // --- MANEJADORES DUEÑO -> MASCOTA ---
+  // MANEJADORES DUEÑO -> MASCOTA
   const handleCambioDueñoCita = (nombreDueño) => {
-    setNuevaCita({ ...nuevaCita, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '' });
+    setNuevaCita({ ...nuevaCita, dueñoNombre: nombreDueño, mascotaId: '', mascotaNombre: '', duenoId: '' });
   };
 
   const handleCambioMascotaCita = (mascotaId) => {
     const pet = mascotas.find(m => m.id === mascotaId);
-    setNuevaCita({ ...nuevaCita, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
+    // CORRECCIÓN 2: Capturar el ID del dueño al seleccionar la mascota
+    setNuevaCita({ 
+      ...nuevaCita, 
+      mascotaId: mascotaId, 
+      mascotaNombre: pet?.nombre || '',
+      duenoId: pet?.duenoId || pet?.dueñoId || '' 
+    });
   };
 
   const handleCambioDueñoSello = (nombreDueño) => {
@@ -86,18 +92,21 @@ export default function Veterinaria() {
     setNuevoSello({ ...nuevoSello, mascotaId: mascotaId, mascotaNombre: pet?.nombre || '' });
   };
 
-  // --- FUNCIONES DE ACCIÓN ---
+  // FUNCIONES DE ACCIÓN
   const agendarCita = async (e) => {
     e.preventDefault();
     if (!nuevaCita.mascotaId) return alert("Selecciona una mascota");
 
     const [time, modifier] = nuevaCita.horaCita.split(' ');
     let [hours, minutes] = time.split(':');
-    if (hours === '12') hours = '00';
-    if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
+    let h = parseInt(hours, 10);
+    if (h === 12) h = 0;
+    if (modifier === 'PM') h += 12;
 
-    const fechaTimestamp = new Date(nuevaCita.fechaCita);
-    fechaTimestamp.setHours(hours, minutes, 0, 0);
+    // CORRECCIÓN 3: Separar la fecha para evitar el salto de zona horaria a un día antes
+    const [year, month, day] = nuevaCita.fechaCita.split('-').map(Number);
+    const fechaTimestamp = new Date(year, month - 1, day);
+    fechaTimestamp.setHours(h, parseInt(minutes, 10), 0, 0);
 
     try {
       await addDoc(collection(db, 'consultas'), {
@@ -107,7 +116,7 @@ export default function Veterinaria() {
       });
       setShowModalNuevaCita(false);
       setNuevaCita({
-        mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Consulta General',
+        duenoId: '', mascotaId: '', mascotaNombre: '', dueñoNombre: '', tipo: 'Consulta General',
         sintomas: [], notas: '', fechaCita: '', horaCita: '', estado: 'Pendiente'
       });
     } catch (err) { console.error("Error al agendar:", err); }
@@ -227,7 +236,7 @@ export default function Veterinaria() {
         </Table>
       </div>
 
-      {/* MODAL: SELLAR CARTILLA */}
+      {/* SELLAR CARTILLA */}
       <Modal show={showModalSellar} onHide={() => setShowModalSellar(false)} centered size="lg">
         <Modal.Header closeButton className="bg-success text-white">
           <Modal.Title className="fw-bold">Sellar Cartilla Digital</Modal.Title>
@@ -293,7 +302,7 @@ export default function Veterinaria() {
         </Modal.Body>
       </Modal>
 
-      {/* MODAL: AGENDAR CITA */}
+      {/* AGENDAR CITA */}
       <Modal show={showModalNuevaCita} onHide={() => setShowModalNuevaCita(false)} centered size="lg">
         <Modal.Header closeButton><Modal.Title className="fw-bold">Agendar Nueva Cita</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
@@ -349,7 +358,7 @@ export default function Veterinaria() {
         </Modal.Body>
       </Modal>
 
-      {/* MODAL: ATENDER */}
+      {/* ATENDER */}
       <Modal show={showModalAtender} onHide={() => setShowModalAtender(false)} centered size="lg">
         <Modal.Header closeButton><Modal.Title className="fw-bold">Consulta: {citaActiva?.mascotaNombre}</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
@@ -366,7 +375,7 @@ export default function Veterinaria() {
         </Modal.Body>
       </Modal>
 
-      {/* MODAL: DETALLE EXPEDIENTE */}
+      {/* DETALLE EXPEDIENTE */}
       <Modal show={showModalDetalle} onHide={() => setShowModalDetalle(false)} centered size="lg">
         <Modal.Header closeButton><Modal.Title className="fw-bold">Expediente Clínico</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">

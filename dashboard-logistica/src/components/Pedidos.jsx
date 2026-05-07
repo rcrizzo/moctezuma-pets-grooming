@@ -8,12 +8,11 @@ export default function Pedidos({ setVistaActual }) {
   const [pedidos, setPedidos] = useState([]);
   const [cargando, setCargando] = useState(true);
   
-  // Estados para Modal de Detalle
   const [showModal, setShowModal] = useState(false);
   const [pedidoActivo, setPedidoActivo] = useState(null);
   const [procesando, setProcesando] = useState(false);
 
-  // --- ESTADOS PARA NUEVO PEDIDO (MOSTRADOR) ---
+  // ESTADOS PARA NUEVO PEDIDO (MOSTRADOR)
   const [showModalNuevo, setShowModalNuevo] = useState(false);
   const [clientes, setClientes] = useState([]);
   const [inventario, setInventario] = useState([]);
@@ -23,9 +22,9 @@ export default function Pedidos({ setVistaActual }) {
   const [qtySel, setQtySel] = useState(1);
   const [carrito, setCarrito] = useState([]);
 
-  // --- 1. ESCUCHAR DATOS EN TIEMPO REAL ---
+  // ESCUCHAR DATOS EN TIEMPO REAL
   useEffect(() => {
-    // Pedidos
+    // PEDIDOS
     const qPedidos = query(collection(db, 'pedidos'), orderBy('createdAt', 'desc'));
     const unsubPedidos = onSnapshot(qPedidos, (snapshot) => {
       const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -33,13 +32,13 @@ export default function Pedidos({ setVistaActual }) {
       setCargando(false);
     });
 
-    // Clientes (Para el select de mostrador)
+    // CLIENTES
     const qClientes = query(collection(db, 'usuarios'), where('rol', '==', 'cliente'));
     const unsubClientes = onSnapshot(qClientes, (snap) => {
       setClientes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Inventario (Para el catálogo de venta)
+    // INVENTARIO
     const qInventario = query(collection(db, 'inventario'));
     const unsubInventario = onSnapshot(qInventario, (snap) => {
       setInventario(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -48,7 +47,7 @@ export default function Pedidos({ setVistaActual }) {
     return () => { unsubPedidos(); unsubClientes(); unsubInventario(); };
   }, []);
 
-  // --- 2. LÓGICA DEL CARRITO (MOSTRADOR) ---
+  // LÓGICA DEL CARRITO (MOSTRADOR)
   const agregarAlCarrito = () => {
     if (!prodSel || qtySel < 1) return;
     
@@ -91,7 +90,7 @@ export default function Pedidos({ setVistaActual }) {
         if (c) nombreC = c.nombre;
       }
 
-      // Creamos el pedido en la BD (Idéntico a como lo hace la app)
+      // CREAR PEDIDO EN BD
       await addDoc(collection(db, 'pedidos'), {
         clienteNombre: nombreC,
         clienteId: clienteSel || 'publico_general',
@@ -102,7 +101,7 @@ export default function Pedidos({ setVistaActual }) {
         origen: 'Mostrador'
       });
 
-      // Si es entrega directa, descontamos el stock inmediatamente
+      // EN CASO DE QUE SEA ENTREGA DIRECTA
       if (estadoFinal === 'Entregado') {
         const promesasStock = carrito.map(item => {
           const productRef = doc(db, 'inventario', item.id);
@@ -122,7 +121,7 @@ export default function Pedidos({ setVistaActual }) {
     }
   };
 
-  // --- 3. MARCAR COMO ENTREGADO (PEDIDOS DE LA APP) ---
+  // MARCAR COMO ENTREGADO (PEDIDOS DE LA APP)
   const entregarPedido = async () => {
     if (!pedidoActivo) return;
     setProcesando(true);
@@ -130,7 +129,7 @@ export default function Pedidos({ setVistaActual }) {
     try {
       await updateDoc(doc(db, 'pedidos', pedidoActivo.id), { estado: 'Entregado' });
 
-      // Descontar el stock de cada producto en la colección 'inventario'
+      // DESCONTAR STOCK DE CADA PRODUCTO
       const promesasStock = pedidoActivo.items.map(item => {
         const productRef = doc(db, 'inventario', item.id);
         return updateDoc(productRef, { stock: increment(-item.qty) });
@@ -153,7 +152,6 @@ export default function Pedidos({ setVistaActual }) {
 
   return (
     <div className="animate__animated animate__fadeIn">
-      {/* CABECERA */}
       <div className="glass-card mb-4">
         <div className="p-4 p-md-5 border-bottom d-flex justify-content-between align-items-center" style={{ borderColor: 'var(--border-light)' }}>
           <div className="d-flex align-items-center gap-3">
@@ -240,7 +238,7 @@ export default function Pedidos({ setVistaActual }) {
         </div>
       </div>
 
-      {/* --- MODAL: NUEVA VENTA MOSTRADOR --- */}
+      {/* NUEVA VENTA MOSTRADOR */}
       <Modal show={showModalNuevo} onHide={() => {setShowModalNuevo(false); setCarrito([]);}} centered size="lg">
         <Modal.Header closeButton className="bg-light">
           <Modal.Title className="fw-bold">Punto de Venta (Mostrador)</Modal.Title>
@@ -328,7 +326,7 @@ export default function Pedidos({ setVistaActual }) {
         </Modal.Body>
       </Modal>
 
-      {/* MODAL ORIGINAL: DETALLE DEL PEDIDO (PARA PROCESAR LOS DE LA APP) */}
+      {/* DETALLE DEL PEDIDO */}
       <Modal show={showModal} onHide={() => setShowModal(false)} centered size="lg">
         <Modal.Header closeButton className="bg-light">
           <Modal.Title className="fw-bold">Detalle del Pedido</Modal.Title>

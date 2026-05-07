@@ -4,7 +4,7 @@ import { collection, onSnapshot, addDoc, query, doc, updateDoc, deleteDoc, order
 import { db } from '../firebase';
 import { IoCut, IoSearch, IoAdd, IoEye, IoTime, IoWarning, IoCheckmarkCircle, IoCheckmarkDone, IoTrash, IoWater } from 'react-icons/io5';
 
-// --- CATÁLOGOS DE ESTÉTICA ---
+// CATÁLOGOS DE ESTÉTICA
 const SERVICIOS_GROOMING = [
   'Baño Básico', 'Baño Medicado', 'Corte de Pelo (Estilismo)', 
   'Deslanado', 'Corte de Uñas y Limpieza', 'Paquete Spa Completo'
@@ -15,7 +15,7 @@ const HORARIOS = [
   '06:00 PM', '07:00 PM'
 ];
 
-// --- TABULADOR DE PRECIOS BASE ---
+// PRECIOS BASE
 const PRECIOS_BASE = {
   'Pelo Largo': {
     'Mini': { 'Baño': 280, 'Grooming': 380 },
@@ -33,7 +33,7 @@ const PRECIOS_BASE = {
   }
 };
 
-// --- TERMÓMETRO DE NUDOS ---
+// TERMÓMETRO DE NUDOS
 const NIVELES_NUDOS = [
   { label: 'Ninguno / Cepillado Normal', recargo: 0 },
   { label: 'Leve (Superficiales, 10-20%)', recargo: 0.10 },
@@ -44,24 +44,23 @@ const NIVELES_NUDOS = [
 
 export default function Grooming() {
   const [mascotas, setMascotas] = useState([]);
-  const [dueños, setDueños] = useState([]); // Nuevo estado para los dueños
+  const [dueños, setDueños] = useState([]);
   const [citasGrooming, setCitasGrooming] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   
-  // Modales
   const [showModalTurno, setShowModalTurno] = useState(false);
   const [showModalFicha, setShowModalFicha] = useState(false);
   const [citaActiva, setCitaActiva] = useState(null);
   const [mascotaActiva, setMascotaActiva] = useState(null);
 
-  // Estado del formulario de nueva cita (Añadido 'fecha')
   const estadoInicial = {
+    duenoId: '',
     duenoNombre: '', 
     mascotaId: '',   
     mascotaNombre: '',
     servicio: 'Corte de Pelo (Estilismo)',
-    fecha: '', // <--- CORRECCIÓN: Campo de fecha agregado
+    fecha: '',
     horario: '',
     instrucciones: '',
     estado: 'Pendiente',
@@ -71,17 +70,15 @@ export default function Grooming() {
   const [nuevoTurno, setNuevoTurno] = useState(estadoInicial);
 
   useEffect(() => {
-    // Escuchar Mascotas para armar los catálogos
     const unsubMascotas = onSnapshot(collection(db, 'mascotas'), (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMascotas(docs);
       
-      // Extraemos una lista de dueños únicos para el primer desplegable
       const uniqueOwners = Array.from(new Set(docs.map(m => m.duenoNombre).filter(Boolean)));
       setDueños(uniqueOwners.sort());
     });
 
-    // Escuchar Citas
+    // ESCUCHAR CITAS
     const qCitas = query(collection(db, 'grooming'), orderBy('fechaRegistro', 'desc'));
     const unsubCitas = onSnapshot(qCitas, (snapshot) => {
       setCitasGrooming(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -91,7 +88,7 @@ export default function Grooming() {
     return () => { unsubMascotas(); unsubCitas(); };
   }, []);
 
-  // --- LÓGICA DE COTIZACIÓN AUTOMÁTICA ---
+  // LÓGICA DE COTIZACIÓN
   const calcularPrecio = (mascotaId, servicioNombre, indiceNudos) => {
     const mascota = mascotas.find(m => m.id === mascotaId);
     if (!mascota || !mascota.talla || !mascota.tipoPelo) return 0;
@@ -105,18 +102,16 @@ export default function Grooming() {
     return precioFinal;
   };
 
-  // Manejador del cambio de DUEÑO
   const handleCambioDueno = (nombreDueno) => {
     setNuevoTurno({
       ...nuevoTurno,
       duenoNombre: nombreDueno,
-      mascotaId: '', // Limpiamos mascota al cambiar dueño
+      mascotaId: '',
       mascotaNombre: '',
       precioCalculado: 0
     });
   };
 
-  // Manejador general del formulario
   const handleCambioCotizacion = (campo, valor) => {
     const turnoActualizado = { ...nuevoTurno, [campo]: valor };
     
@@ -124,6 +119,7 @@ export default function Grooming() {
       const mascotaSel = mascotas.find(m => m.id === valor);
       if (mascotaSel) {
         turnoActualizado.mascotaNombre = mascotaSel.nombre;
+        turnoActualizado.duenoId = mascotaSel.duenoId || ''; // <--- ¡AQUÍ CAPTURAMOS EL ID DEL DUEÑO!
       }
     }
 
@@ -142,20 +138,26 @@ export default function Grooming() {
       return alert('Por favor selecciona la mascota, fecha y horario.');
     }
     
-    // Convertir horario string ("10:00 AM") a un Timestamp para que el Resumen lo detecte
+    // 1. Procesar la hora
     const [time, modifier] = nuevoTurno.horario.split(' ');
     let [hours, minutes] = time.split(':');
-    if (hours === '12') hours = '00';
-    if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
+    let h = parseInt(hours, 10);
+    if (h === 12) h = 0;
+    if (modifier === 'PM') h += 12;
 
-    const fechaTimestamp = new Date(nuevoTurno.fecha); // Toma la fecha seleccionada
-    fechaTimestamp.setHours(hours, minutes, 0, 0);
+    // 2. CORRECCIÓN CLAVE: Separar la fecha para evitar el salto de zona horaria
+    // Al usar split, obligamos a JS a usar el calendario local del navegador
+    const [year, month, day] = nuevoTurno.fecha.split('-').map(Number);
+    
+    // Creamos el objeto fecha en hora local (el mes es 0-indexado, por eso -1)
+    const fechaTimestamp = new Date(year, month - 1, day); 
+    fechaTimestamp.setHours(h, parseInt(minutes, 10), 0, 0);
 
     try {
       await addDoc(collection(db, 'grooming'), {
         ...nuevoTurno,
         fechaRegistro: new Date().toISOString(),
-        fechaTimestamp: fechaTimestamp // Dato clave para el dashboard
+        fechaTimestamp: fechaTimestamp // Ahora sí se guardará con el día correcto
       });
       setShowModalTurno(false);
       setNuevoTurno(estadoInicial);
@@ -187,7 +189,7 @@ export default function Grooming() {
     setShowModalFicha(true);
   };
 
-  // --- KPIs de los Contadores Superiores ---
+  // KPIS DE LOS CONTENEDORES
   const conteoPendientes = citasGrooming.filter(c => c.estado === 'Pendiente').length;
   const conteoEnMesa = citasGrooming.filter(c => c.estado === 'En la Mesa (Proceso)').length;
   const conteoListos = citasGrooming.filter(c => c.estado === 'Listo para Recoger').length;
@@ -200,7 +202,7 @@ export default function Grooming() {
   return (
     <div className="animate__animated animate__fadeIn">
 
-      {/* --- TARJETAS CONTADORAS (KPIs) SUPERIORES --- */}
+      {/* TARJETAS CONTADORAS SUPERIORES */}
       <Row className="mb-4 g-3">
         <Col md={3}>
           <div className="glass-card p-4 text-center h-100 border border-3 border-warning rounded-4 bg-white shadow-sm d-flex flex-column justify-content-center">
@@ -235,7 +237,7 @@ export default function Grooming() {
         </Col>
       </Row>
 
-      {/* --- TABLA DE AGENDA --- */}
+      {/* TABLA DE AGENDA */}
       <Card className="glass-card border-0 shadow-sm mt-4">
         <Card.Body className="p-0">
           <div className="p-4 border-bottom d-flex align-items-center justify-content-between bg-light">
@@ -319,7 +321,7 @@ export default function Grooming() {
         </Card.Body>
       </Card>
 
-      {/* --- MODAL: AGENDAR TURNO CON COTIZADOR --- */}
+      {/* AGENDAR TURNO CON COTIZADOR */}
       <Modal show={showModalTurno} onHide={() => setShowModalTurno(false)} centered size="lg">
         <Modal.Header closeButton className="border-0 pb-0">
           <Modal.Title className="fw-bold">Agendar Turno de Estética</Modal.Title>
@@ -349,7 +351,7 @@ export default function Grooming() {
                     className="custom-input bg-light border-0 shadow-sm"
                     value={nuevoTurno.mascotaId}
                     onChange={(e) => handleCambioCotizacion('mascotaId', e.target.value)}
-                    disabled={!nuevoTurno.duenoNombre} // Bloqueado si no hay dueño
+                    disabled={!nuevoTurno.duenoNombre}
                   >
                     <option value="">Seleccionar mascota...</option>
                     {mascotas
@@ -401,7 +403,7 @@ export default function Grooming() {
               </Col>
             </Row>
 
-            {/* --- TERMÓMETRO DE NUDOS --- */}
+            {/* TERMÓMETRO DE NUDOS */}
             <div className="p-3 mb-3 rounded" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
               <Form.Group>
                 <Form.Label className="custom-label fw-bold text-dark d-flex align-items-center gap-2">
@@ -455,7 +457,7 @@ export default function Grooming() {
         </Modal.Body>
       </Modal>
 
-      {/* --- MODAL: FICHA DE ESTILISMO --- */}
+      {/* FICHA DE ESTILISMO */}
       <Modal show={showModalFicha} onHide={() => setShowModalFicha(false)} centered size="md">
         <Modal.Header closeButton className="border-0 pb-0"></Modal.Header>
         <Modal.Body className="p-4 pt-0">

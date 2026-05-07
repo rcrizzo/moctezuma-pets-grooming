@@ -138,3 +138,24 @@ body {
 .beauty-table tr:last-child td { border-bottom: none; }
 .beauty-table tr:hover td { background-color: #F9FAFB; }
 
+/* Resaltado para el día actual en la agenda */
+.today-highlight {
+  background-color: rgba(217, 119, 6, 0.05) !important; /* Un tono muy suave del color accent */
+}
+
+.today-header {
+  background-color: var(--accent) !important;
+  color: white !important;
+}
+
+/* Estilo para las citas interactivas */
+.cita-interactiva {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cita-interactiva:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 10;
+}

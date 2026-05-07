@@ -6,10 +6,9 @@ import { IoCube, IoAlertCircle, IoAdd, IoSearch, IoPencil, IoTrash, IoEye, IoCar
 
 const CATEGORIAS = ['Salud', 'Higiene', 'Alimento', 'Accesorios', 'Farmacia'];
 
-// Recibimos la función setVistaActual para la navegación
 export default function Inventario({ setVistaActual }) {
   const [productos, setProductos] = useState([]);
-  const [pedidosPendientes, setPedidosPendientes] = useState(0); // Estado para el contador del acceso directo
+  const [pedidosPendientes, setPedidosPendientes] = useState(0);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('Todas');
@@ -30,7 +29,7 @@ export default function Inventario({ setVistaActual }) {
   const [productoActual, setProductoActual] = useState(estadoInicial);
 
   useEffect(() => {
-    // 1. Escuchar el Inventario
+    // ESCUCHAR EL INVENTARIO EN TIEMPO REAL
     const qInventario = query(collection(db, 'inventario'), orderBy('nombre', 'asc'));
     const unsubInventario = onSnapshot(qInventario, (snap) => {
       const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -38,10 +37,10 @@ export default function Inventario({ setVistaActual }) {
       setCargando(false);
     });
 
-    // 2. Escuchar los Pedidos Pendientes para la alerta de la tarjeta
+    // PEDIDOS PENDIENTES DE RECOLECCIÓN (APP CLIENTE)
     const qPedidos = query(collection(db, 'pedidos'), where('estado', '==', 'Pendiente de Recolección'));
     const unsubPedidos = onSnapshot(qPedidos, (snap) => {
-      setPedidosPendientes(snap.size); // Solo necesitamos saber cuántos hay
+      setPedidosPendientes(snap.size);
     });
 
     return () => { unsubInventario(); unsubPedidos(); };
@@ -87,7 +86,7 @@ export default function Inventario({ setVistaActual }) {
 
   return (
     <div className="animate__animated animate__fadeIn">
-      {/* 1. DASHBOARD DE ESTADÍSTICAS Y ACCESOS DIRECTOS */}
+      {/* DASHBOARD DE ESTADÍSTICAS Y ACCESOS DIRECTOS */}
       <Row className="mb-4 gx-3">
         <Col md={3}>
           <div className="glass-card p-3 h-100 d-flex flex-column justify-content-center text-center border-bottom border-primary border-4">
@@ -129,7 +128,7 @@ export default function Inventario({ setVistaActual }) {
         </Col>
       </Row>
 
-      {/* 2. BARRA DE HERRAMIENTAS */}
+      {/* BARRA DE HERRAMIENTAS */}
       <div className="glass-card p-4 mb-4">
         <Row className="align-items-center">
           <Col md={4}>
@@ -159,7 +158,7 @@ export default function Inventario({ setVistaActual }) {
         </Row>
       </div>
 
-      {/* 3. TABLA DE GESTIÓN */}
+      {/* TABLA DE GESTIÓN */}
       <div className="glass-card">
         <Table borderless hover responsive className="beauty-table m-0 align-middle">
           <thead>
@@ -207,12 +206,11 @@ export default function Inventario({ setVistaActual }) {
         </Table>
       </div>
 
-      {/* 4. MODAL DE EDICIÓN Y VISTA PREVIA (APP CLIENTE) */}
+      {/* MODAL DE EDICIÓN Y VISTA PREVIA (APP CLIENTE) */}
       <Modal show={showModal} onHide={() => setShowModal(false)} centered size="xl">
         <Modal.Header closeButton><Modal.Title className="fw-bold">{editando ? 'Editar Producto' : 'Registrar Nuevo Producto'}</Modal.Title></Modal.Header>
         <Modal.Body className="p-4 p-md-5">
           <Row>
-            {/* Formulario de Edición */}
             <Col lg={7} className="border-end pe-lg-5">
               <Form onSubmit={handleGuardar}>
                 <h6 className="text-muted text-uppercase small fw-bold mb-3">Datos del Producto</h6>

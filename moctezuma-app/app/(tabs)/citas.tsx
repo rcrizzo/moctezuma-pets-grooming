@@ -3,12 +3,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../firebase';
 
 export default function CitasScreen() {
-  const [proximaCita, setProximaCita] = useState<any>(null);
+  const [listaCitas, setListaCitas] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
+
+  // Estados temporales para unir las 3 categorías en tiempo real
+  const [rawG, setRawG] = useState<any[]>([]);
+  const [rawV, setRawV] = useState<any[]>([]);
+  const [rawH, setRawH] = useState<any[]>([]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -19,62 +24,86 @@ export default function CitasScreen() {
     const unsubUser = onSnapshot(qUser, (userSnap) => {
       if (!userSnap.empty) {
         const dashboardId = userSnap.docs[0].id;
-
-        // 2. Buscar la cita más cercana (ej. en la colección 'grooming')
         const hoy = new Date();
-        const qCitas = query(
+        hoy.setHours(0, 0, 0, 0);
+
+        // 2. Escuchas en tiempo real para las 3 categorías (Sin límite de 1)
+        
+        // Grooming
+        const qG = query(
           collection(db, 'grooming'),
           where('duenoId', '==', dashboardId),
           where('fechaTimestamp', '>=', hoy),
-          orderBy('fechaTimestamp', 'asc'),
-          limit(1)
+          orderBy('fechaTimestamp', 'asc')
         );
+        const unsubG = onSnapshot(qG, (s) => setRawG(s.docs.map(d => ({ 
+            id: d.id, ...d.data(), cat: 'Grooming', icon: 'cut', color: '#D97706', bgColor: '#FEF3C7' 
+        }))));
 
-        onSnapshot(qCitas, (citaSnap) => {
-          if (!citaSnap.empty) {
-            const data = citaSnap.docs[0].data();
-            setProximaCita({
-              id: citaSnap.docs[0].id,
-              titulo: data.servicio || 'Servicio de Estética',
-              mascota: data.mascotaNombre || 'Tu mascota',
-              fecha: data.fechaTimestamp?.toDate(),
-            });
-          } else {
-            setProximaCita(null);
-          }
-          setCargando(false);
-        });
+        // Veterinaria
+        const qV = query(
+          collection(db, 'consultas'),
+          where('duenoId', '==', dashboardId),
+          where('fechaTimestamp', '>=', hoy),
+          orderBy('fechaTimestamp', 'asc')
+        );
+        const unsubV = onSnapshot(qV, (s) => setRawV(s.docs.map(d => ({ 
+            id: d.id, ...d.data(), cat: 'Veterinaria', icon: 'medical', color: '#0284C7', bgColor: '#E0F2FE' 
+        }))));
+
+        // Hospedaje
+        const qH = query(
+          collection(db, 'hospedaje'),
+          where('duenoId', '==', dashboardId),
+          where('fechaTimestamp', '>=', hoy),
+          orderBy('fechaTimestamp', 'asc')
+        );
+        const unsubH = onSnapshot(qH, (s) => setRawH(s.docs.map(d => ({ 
+            id: d.id, ...d.data(), cat: 'Hospedaje', icon: 'bed', color: '#059669', bgColor: '#DCFCE7' 
+        }))));
+
+        return () => { unsubG(); unsubV(); unsubH(); };
       }
     });
 
     return () => unsubUser();
   }, []);
 
-  // Utilidades para extraer Día, Mes y Hora de la fecha real de Firebase
-  const getDia = (fecha: Date) => fecha ? fecha.getDate().toString().padStart(2, '0') : '--';
-  const getMes = (fecha: Date) => {
-    if (!fecha) return '---';
+  // 3. Procesar y mezclar todas las citas cada vez que cambie alguna categoría
+  useEffect(() => {
+    const todas = [...rawG, ...rawV, ...rawH];
+    
+    // Ordenar todas las citas por el timestamp de forma ascendente
+    todas.sort((a, b) => (a.fechaTimestamp?.seconds || 0) - (b.fechaTimestamp?.seconds || 0));
+    
+    setListaCitas(todas);
+    setCargando(false);
+  }, [rawG, rawV, rawH]);
+
+  // Utilidades de formato
+  const getDia = (ts: any) => ts?.toDate ? ts.toDate().getDate().toString().padStart(2, '0') : '--';
+  const getMes = (ts: any) => {
+    if (!ts?.toDate) return '---';
     const meses = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
-    return meses[fecha.getMonth()];
+    return meses[ts.toDate().getMonth()];
   };
-  const getHoraFormat = (fecha: Date) => {
-    if (!fecha) return '--:--';
-    return fecha.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const getHoraFormat = (cita: any) => {
+    return cita.hora || cita.horario || cita.horaCita || 'Pendiente';
   };
 
-  const ServiceCard = ({ title, desc, icon, routeParam }: { title: string, desc: string, icon: any, routeParam: string }) => (
+  const ServiceCard = ({ title, desc, icon, routeParam }: any) => (
     <TouchableOpacity 
       style={styles.serviceCard} 
       onPress={() => router.push({ pathname: '/agendar', params: { servicio: routeParam } })}
     >
       <View style={styles.serviceIconBg}>
-        <Ionicons name={icon} size={28} color="#D97706" />
+        <Ionicons name={icon} size={24} color="#D97706" />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.serviceTitle}>{title}</Text>
         <Text style={styles.serviceDesc}>{desc}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={24} color="#CBD5E1" />
+      <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
     </TouchableOpacity>
   );
 
@@ -83,62 +112,68 @@ export default function CitasScreen() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.screenTitle}>Mis Citas</Text>
 
-        {/* 1. La cita activa del usuario (Dinámica) */}
-        <Text style={styles.sectionHeader}>PRÓXIMA CITA</Text>
+        <Text style={styles.sectionHeader}>PRÓXIMOS APARTADOS</Text>
         
         {cargando ? (
-          <View style={[styles.activeAppointmentCard, { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }]}>
+          <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color="#D97706" />
           </View>
-        ) : proximaCita ? (
-          <View style={styles.activeAppointmentCard}>
-            <View style={styles.activeHeader}>
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateBadgeDay}>{getDia(proximaCita.fecha)}</Text>
-                <Text style={styles.dateBadgeMonth}>{getMes(proximaCita.fecha)}</Text>
+        ) : listaCitas.length > 0 ? (
+          listaCitas.map((cita) => (
+            <View key={cita.id} style={styles.appointmentCard}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.dateBadge, { backgroundColor: cita.bgColor }]}>
+                  <Text style={[styles.dateBadgeDay, { color: cita.color }]}>{getDia(cita.fechaTimestamp)}</Text>
+                  <Text style={[styles.dateBadgeMonth, { color: cita.color }]}>{getMes(cita.fechaTimestamp)}</Text>
+                </View>
+                
+                <View style={styles.cardInfo}>
+                  <View style={styles.tagRow}>
+                    <View style={[styles.catTag, { backgroundColor: cita.bgColor }]}>
+                      <Ionicons name={cita.icon} size={10} color={cita.color} />
+                      <Text style={[styles.catTagText, { color: cita.color }]}>{cita.cat}</Text>
+                    </View>
+                    <Text style={styles.timeLabel}>{getHoraFormat(cita)}</Text>
+                  </View>
+                  <Text style={styles.cardTitle}>{cita.servicio || cita.tipo || 'Servicio Moctezuma'}</Text>
+                  <Text style={styles.cardPet}>Mascota: <Text style={{fontWeight: '700', color: '#0F172A'}}>{cita.mascotaNombre || cita.mascota || 'Tu mascota'}</Text></Text>
+                </View>
               </View>
-              <View style={{ flex: 1, marginLeft: 15 }}>
-                <Text style={styles.activeTitle}>{proximaCita.titulo}</Text>
-                <Text style={styles.activeSub}>Mascota: {proximaCita.mascota}</Text>
+
+              <View style={styles.cardFooter}>
+                <View style={styles.statusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: cita.estado === 'Pendiente' ? '#F59E0B' : '#10B981' }]} />
+                  <Text style={styles.statusText}>{cita.estado || 'Agendado'}</Text>
+                </View>
               </View>
             </View>
-            <View style={styles.activeFooter}>
-              <View style={styles.infoRow}>
-                <Ionicons name="time-outline" size={16} color="#64748B" />
-                <Text style={styles.infoText}>{getHoraFormat(proximaCita.fecha)}</Text>
-              </View>
-              <TouchableOpacity style={styles.cancelBtn}>
-                <Text style={styles.cancelBtnText}>Reprogramar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          ))
         ) : (
-          <View style={[styles.activeAppointmentCard, { alignItems: 'center', paddingVertical: 30 }]}>
+          <View style={styles.emptyContainer}>
             <Ionicons name="calendar-clear-outline" size={40} color="#CBD5E1" style={{ marginBottom: 10 }} />
-            <Text style={{ color: '#64748B', fontWeight: '600', fontSize: 14 }}>No tienes citas próximas agendadas.</Text>
+            <Text style={styles.emptyText}>No tienes citas próximas agendadas.</Text>
           </View>
         )}
 
-        {/* 2. Apartados atractivos para agendar (Intactos) */}
-        <Text style={styles.sectionHeader}>AGENDAR NUEVO SERVICIO</Text>
+        <Text style={[styles.sectionHeader, { marginTop: 20 }]}>AGENDAR NUEVO SERVICIO</Text>
         
         <ServiceCard 
           title="Grooming & Estética" 
-          desc="Baños, cortes de raza, spa y limpieza dental." 
+          desc="Baños, cortes de raza y spa." 
           icon="cut" 
           routeParam="grooming"
         />
         
         <ServiceCard 
           title="Consulta Veterinaria" 
-          desc="Revisiones, vacunas y atención médica." 
+          desc="Revisiones y atención médica." 
           icon="medical" 
           routeParam="veterinaria"
         />
         
         <ServiceCard 
           title="Hospedaje Canino" 
-          desc="Estadías con cuidado 24/7 y reportes diarios." 
+          desc="Estadías con cuidado 24/7." 
           icon="bed" 
           routeParam="hospedaje"
         />
@@ -152,23 +187,35 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
   container: { paddingHorizontal: 25, paddingTop: 30, paddingBottom: 40 },
   screenTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A', marginBottom: 25 },
-  sectionHeader: { fontSize: 12, fontWeight: '800', color: '#94A3B8', letterSpacing: 1, marginBottom: 12, marginTop: 10 },
+  sectionHeader: { fontSize: 11, fontWeight: '800', color: '#94A3B8', letterSpacing: 1.5, marginBottom: 15 },
+  loaderContainer: { paddingVertical: 40, alignItems: 'center' },
   
-  activeAppointmentCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 35, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
-  activeHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  dateBadge: { backgroundColor: '#FEF3C7', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 16, alignItems: 'center' },
-  dateBadgeDay: { color: '#D97706', fontSize: 20, fontWeight: '800' },
-  dateBadgeMonth: { color: '#B45309', fontSize: 12, fontWeight: '700' },
-  activeTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  activeSub: { fontSize: 14, color: '#64748B', marginTop: 4 },
-  activeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 15 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  infoText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
-  cancelBtn: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  cancelBtnText: { color: '#0F172A', fontSize: 12, fontWeight: '700' },
+  // TARJETA DE CITA LISTA
+  appointmentCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 18, marginBottom: 15, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center' },
+  dateBadge: { width: 55, height: 65, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  dateBadgeDay: { fontSize: 20, fontWeight: '800' },
+  dateBadgeMonth: { fontSize: 10, fontWeight: '700', marginTop: -2 },
+  cardInfo: { flex: 1, marginLeft: 15 },
+  tagRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+  catTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  catTagText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  timeLabel: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  cardPet: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'capitalize' },
+  reproBtn: { backgroundColor: '#F8FAFC', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+  reproBtnText: { color: '#475569', fontSize: 11, fontWeight: '700' },
 
-  serviceCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 20, borderRadius: 24, marginBottom: 15, borderWidth: 1, borderColor: '#E2E8F0' },
-  serviceIconBg: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
-  serviceTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 4 },
-  serviceDesc: { fontSize: 13, color: '#64748B', lineHeight: 18 },
+  emptyContainer: { alignItems: 'center', paddingVertical: 40, backgroundColor: '#FFFFFF', borderRadius: 24, borderStyle: 'dashed', borderWidth: 2, borderColor: '#E2E8F0' },
+  emptyText: { color: '#64748B', fontWeight: '600', fontSize: 13 },
+
+  serviceCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 18, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  serviceIconBg: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
+  serviceTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 2 },
+  serviceDesc: { fontSize: 12, color: '#64748B' },
 });

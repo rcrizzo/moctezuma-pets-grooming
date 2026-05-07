@@ -1,9 +1,8 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth"; // <-- 1. Importamos getAuth
+import { getAuth } from "firebase/auth";
 
-// Reemplaza esto con tu configuración exacta copiada de la consola
 const firebaseConfig = {
   apiKey: "AIzaSyDYnvhr2nRAYURkBy7VjyZ79T8yC-V9q40",
   authDomain: "moctezuma-pets-grooming.firebaseapp.com",

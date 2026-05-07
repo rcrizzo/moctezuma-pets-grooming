@@ -6,11 +6,12 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
-const generarProximosDias = () => {
+const generarProximosDias = (dias = 30) => {
   const fechas = [];
-  for (let i = 1; i <= 7; i++) {
+  for (let i = 1; i <= dias; i++) {
     const date = new Date();
     date.setDate(date.getDate() + i);
+    date.setHours(0,0,0,0);
     fechas.push(date);
   }
   return fechas;
@@ -25,6 +26,16 @@ const NIVELES_NUDOS = [
   'Moderado (Frecuentes, 30-50%)', 
   'Severo (Compactos, 60-80%)', 
   'Crítico (Rastas, 90-100%)'
+];
+
+const SERVICIOS_GROOMING = [
+  'Baño Básico', 'Baño Medicado', 'Corte de Pelo (Estilismo)', 
+  'Deslanado', 'Corte de Uñas y Limpieza', 'Paquete Spa Completo'
+];
+
+const HORARIOS_COMPLETOS = [
+  '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', 
+  '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM'
 ];
 
 const PRECIOS_BASE: any = {
@@ -48,7 +59,8 @@ export default function AgendarScreen() {
   const { servicio } = useLocalSearchParams();
   const [step, setStep] = useState(1);
   const [procesando, setProcesando] = useState(false);
-  const [userName, setUserName] = useState(''); // Nombre real del dueño
+  const [userName, setUserName] = useState(''); 
+  const [userId, setUserId] = useState(''); 
 
   // --- ESTADOS DE DATOS ---
   const [misMascotas, setMisMascotas] = useState<any[]>([]);
@@ -56,11 +68,10 @@ export default function AgendarScreen() {
   
   // Grooming
   const [tipoServicioGrooming, setTipoServicioGrooming] = useState('Baño Básico');
-  const [nivelNudosIndex, setNivelNudosIndex] = useState(0); // Guardamos el número
+  const [nivelNudosIndex, setNivelNudosIndex] = useState(0); 
   const [extraGrooming, setExtraGrooming] = useState<string[]>([]);
   
   // Vet y Hospedaje
-  const [sintomas, setSintomas] = useState<string[]>([]);
   const [notasAdicionales, setNotasAdicionales] = useState('');
   const [guiaAlimentacion, setGuiaAlimentacion] = useState('');
   const [socializacion, setSocializacion] = useState('Amigable');
@@ -68,6 +79,7 @@ export default function AgendarScreen() {
   // Calendario
   const [fechasDisponibles] = useState(generarProximosDias());
   const [fechaSel, setFechaSel] = useState<Date>(fechasDisponibles[0]);
+  const [fechaSalidaSel, setFechaSalidaSel] = useState<Date>(fechasDisponibles[1]);
   const [horaSel, setHoraSel] = useState('10:00 AM');
 
   // --- OBTENER DATOS ---
@@ -80,6 +92,7 @@ export default function AgendarScreen() {
       if (!snap.empty) {
         const data = snap.docs[0].data();
         setUserName(data.nombre || 'Usuario');
+        setUserId(snap.docs[0].id);
         
         const qMascotas = query(collection(db, 'mascotas'), where('duenoId', '==', snap.docs[0].id));
         onSnapshot(qMascotas, (petSnap) => {
@@ -91,21 +104,18 @@ export default function AgendarScreen() {
     return () => unsubUser();
   }, []);
 
-  // --- COTIZADOR EXACTO AL DEL DASHBOARD ---
+  // --- COTIZADOR ---
   const calcularPrecio = () => {
     if (servicio !== 'grooming' || !mascotaSel) return 0;
-    
     const talla = mascotaSel.talla || 'Mediano';
     const tipoPelo = mascotaSel.tipoPelo || 'Corto';
-    const tipoTarifa = tipoServicioGrooming.includes('Baño Básico') ? 'Baño' : 'Grooming';
     
-    // Obtener precio base
+    const esGroomingCompleto = ['Corte de Pelo (Estilismo)', 'Deslanado', 'Paquete Spa Completo'].includes(tipoServicioGrooming);
+    const tipoTarifa = esGroomingCompleto ? 'Grooming' : 'Baño';
+    
     const precioBase = PRECIOS_BASE[tipoPelo]?.[talla]?.[tipoTarifa] || 350;
-    
-    // Calcular recargo por nudos (0%, 10%, 30%, 60%, 100%)
     const recargos = [0, 0.10, 0.30, 0.60, 1.00];
     const recargoMonto = precioBase * recargos[nivelNudosIndex];
-    
     return precioBase + recargoMonto + (extraGrooming.length * 50);
   };
 
@@ -115,75 +125,94 @@ export default function AgendarScreen() {
     setProcesando(true);
 
     try {
-      // 1. Preparar Timestamp y Fechas String
-      const [horaStr, minutoStr, ampm] = horaSel.match(/(\d+):(\d+)\s(AM|PM)/)!.slice(1);
-      let hours = parseInt(horaStr);
-      if (ampm === 'PM' && hours !== 12) hours += 12;
-      if (ampm === 'AM' && hours === 12) hours = 0;
+      // Configuraciones de fecha local segura
+      const fYear = fechaSel.getFullYear();
+      const fMonth = String(fechaSel.getMonth() + 1).padStart(2, '0');
+      const fDay = String(fechaSel.getDate()).padStart(2, '0');
+      const fechaStringLocal = `${fYear}-${fMonth}-${fDay}`;
 
-      const fechaTimestamp = new Date(fechaSel);
-      fechaTimestamp.setHours(hours, parseInt(minutoStr), 0, 0);
-      
-      // Fecha en formato texto (YYYY-MM-DD) para que el Dashboard la lea
-      const fechaString = fechaSel.toISOString().split('T')[0];
+      if (servicio === 'grooming' || servicio === 'veterinaria') {
+        const [horaStr, minutoStr, ampm] = horaSel.match(/(\d+):(\d+)\s(AM|PM)/)!.slice(1);
+        let hours = parseInt(horaStr);
+        if (ampm === 'PM' && hours !== 12) hours += 12;
+        if (ampm === 'AM' && hours === 12) hours = 0;
 
-      if (servicio === 'grooming') {
-        await addDoc(collection(db, 'grooming'), {
-          duenoNombre: userName, // Grooming usa duenoNombre
-          mascotaId: mascotaSel.id,
-          mascotaNombre: mascotaSel.nombre,
-          servicio: tipoServicioGrooming,
-          fecha: fechaString, // String vital
-          horario: horaSel,
-          instrucciones: notasAdicionales,
-          estado: 'Pendiente',
-          nivelNudos: nivelNudosIndex, // El dashboard espera el número (0-4)
-          precioCalculado: calcularPrecio(),
-          fechaRegistro: new Date().toISOString(),
-          fechaTimestamp: Timestamp.fromDate(fechaTimestamp)
-        });
-      } 
-      else if (servicio === 'veterinaria') {
-        await addDoc(collection(db, 'consultas'), { // VET USA CONSULTAS
-          dueñoNombre: userName, // Vet usa dueñoNombre con Ñ
-          mascotaId: mascotaSel.id,
-          mascotaNombre: mascotaSel.nombre,
-          tipo: 'Consulta General',
-          sintomas: sintomas,
-          notas: notasAdicionales,
-          fechaCita: fechaString, // Campo exacto del dashboard
-          horaCita: horaSel, // Campo exacto
-          estado: 'Pendiente',
-          fechaTimestamp: Timestamp.fromDate(fechaTimestamp),
-          createdAt: serverTimestamp()
-        });
+        const fechaTimestamp = new Date(fechaSel);
+        fechaTimestamp.setHours(hours, parseInt(minutoStr), 0, 0);
+        
+        if (servicio === 'grooming') {
+          await addDoc(collection(db, 'grooming'), {
+            duenoId: userId,             
+            clienteId: userId, 
+            duenoNombre: userName,       
+            mascotaId: mascotaSel.id,
+            mascotaNombre: mascotaSel.nombre,
+            servicio: tipoServicioGrooming,
+            tipo: tipoServicioGrooming, 
+            fecha: fechaStringLocal,     
+            hora: horaSel,               
+            horario: horaSel,            
+            notas: notasAdicionales,     
+            instrucciones: notasAdicionales, 
+            estado: 'Pendiente',
+            nivelNudos: nivelNudosIndex, 
+            precioCalculado: calcularPrecio(),
+            fechaRegistro: new Date().toISOString(),
+            fechaTimestamp: Timestamp.fromDate(fechaTimestamp)
+          });
+        } 
+        else if (servicio === 'veterinaria') {
+          await addDoc(collection(db, 'consultas'), { 
+            duenoId: userId,             
+            duenoNombre: userName, 
+            mascotaId: mascotaSel.id,
+            mascotaNombre: mascotaSel.nombre,
+            tipo: 'Consulta General',
+            servicio: 'Consulta General', 
+            sintomas: [], // Eliminados los tags de síntomas
+            notas: notasAdicionales, 
+            fecha: fechaStringLocal,           
+            fechaCita: fechaStringLocal,       
+            hora: horaSel,                
+            horaCita: horaSel,            
+            estado: 'Pendiente',
+            fechaTimestamp: Timestamp.fromDate(fechaTimestamp),
+            createdAt: serverTimestamp()
+          });
+        }
       } 
       else if (servicio === 'hospedaje') {
-        const nextDay = new Date(fechaSel);
-        nextDay.setDate(nextDay.getDate() + 1);
-        
+        // Formateo de fecha de salida
+        const nYear = fechaSalidaSel.getFullYear();
+        const nMonth = String(fechaSalidaSel.getMonth() + 1).padStart(2, '0');
+        const nDay = String(fechaSalidaSel.getDate()).padStart(2, '0');
+        const fechaSalidaLocal = `${nYear}-${nMonth}-${nDay}`;
+
         await addDoc(collection(db, 'hospedaje'), {
-          dueñoNombre: userName, // Con Ñ
+          duenoId: userId,             
+          clienteId: userId,
+          duenoNombre: userName, 
           mascotaId: mascotaSel.id,
           mascotaNombre: mascotaSel.nombre,
-          fechaIngreso: fechaString,
-          fechaSalida: nextDay.toISOString().split('T')[0],
+          fechaIngreso: fechaStringLocal,    
+          fechaSalida: fechaSalidaLocal,
           guiaAlimentacion: guiaAlimentacion,
           nivelSocializacion: socializacion,
-          pertenencias: notasAdicionales, // Las notas van a pertenencias
-          notas: '',
-          habitacion: 'Sin Asignar', // Campo clave inicial
-          estado: 'Pendiente',
+          pertenencias: notasAdicionales, 
+          notas: notasAdicionales,      
+          habitacion: 'Sin Asignar', 
+          estado: 'Pendiente', // El dashboard de logística deberá aprobar esto
+          fechaTimestamp: Timestamp.fromDate(fechaSel), 
           createdAt: serverTimestamp()
         });
       }
 
-      Alert.alert("¡Cita Agendada!", "Tu solicitud fue registrada y se refleja en el panel.", [
+      Alert.alert("¡Solicitud Enviada!", "Tu apartado fue registrado y será revisado en breve.", [
         { text: "Ver mis citas", onPress: () => router.replace('/(tabs)/citas') }
       ]);
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "No pudimos agendar la cita.");
+      Alert.alert("Error", "No pudimos enviar la solicitud.");
     } finally {
       setProcesando(false);
     }
@@ -239,34 +268,26 @@ export default function AgendarScreen() {
         <Text style={styles.stepTitle}>Personaliza el servicio</Text>
         
         <Text style={styles.inputLabel}>TIPO DE SERVICIO</Text>
-        <View style={styles.row}>
-          {['Baño Básico', 'Corte de Pelo (Estilismo)'].map(s => (
-            <TouchableOpacity key={s} style={[styles.smallTab, tipoServicioGrooming === s && styles.smallTabActive]} onPress={() => setTipoServicioGrooming(s)}>
-              <Text style={[styles.smallTabText, tipoServicioGrooming === s && styles.smallTabTextActive]}>{s === 'Baño Básico' ? 'Solo Baño' : 'Baño y Corte'}</Text>
+        <View style={styles.tagsContainer}>
+          {SERVICIOS_GROOMING.map(s => (
+            <TouchableOpacity 
+              key={s} 
+              style={[styles.tag, tipoServicioGrooming === s && styles.tagActive]} 
+              onPress={() => setTipoServicioGrooming(s)}
+            >
+              <Text style={[styles.tagText, tipoServicioGrooming === s && styles.tagTextActive]}>{s}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <Text style={[styles.inputLabel, {marginTop: 20}]}>NIVEL DE NUDOS</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 10}}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 20}}>
           {NIVELES_NUDOS.map((n, idx) => (
             <TouchableOpacity key={idx} style={[styles.nudosBtn, nivelNudosIndex === idx && styles.nudosBtnActive]} onPress={() => setNivelNudosIndex(idx)}>
               <Text style={[styles.nudosText, nivelNudosIndex === idx && styles.nudosTextActive]}>{n.split(' ')[0]}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
-
-        <Text style={[styles.inputLabel, {marginTop: 15}]}>EXTRAS</Text>
-        {['Corte de Uñas', 'Limpieza de Oídos', 'Shampoo Medicado'].map(extra => (
-          <TouchableOpacity 
-            key={extra} 
-            style={styles.checkOption}
-            onPress={() => setExtraGrooming(prev => prev.includes(extra) ? prev.filter(e => e !== extra) : [...prev, extra])}
-          >
-            <Ionicons name={extraGrooming.includes(extra) ? "checkbox" : "square-outline"} size={24} color="#D97706" />
-            <Text style={styles.checkText}>{extra}</Text>
-          </TouchableOpacity>
-        ))}
 
         <Text style={[styles.inputLabel, {marginTop: 15}]}>INSTRUCCIONES / NOTAS</Text>
         <TextInput 
@@ -283,22 +304,11 @@ export default function AgendarScreen() {
     if (servicio === 'veterinaria') return (
       <View style={styles.fadeContainer}>
         <Text style={styles.stepTitle}>Reporte de Triage</Text>
-        <Text style={styles.inputLabel}>SÍNTOMAS OBSERVADOS</Text>
-        <View style={styles.tagsContainer}>
-          {['Fiebre', 'Vómito', 'Letargo', 'Tos', 'Poca Hambre', 'Piel/Alergia'].map(s => (
-            <TouchableOpacity 
-              key={s} 
-              style={[styles.tag, sintomas.includes(s) && styles.tagActive]}
-              onPress={() => setSintomas(prev => prev.includes(s) ? prev.filter(i => i !== s) : [...prev, s])}
-            >
-              <Text style={[styles.tagText, sintomas.includes(s) && styles.tagTextActive]}>{s}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <Text style={[styles.inputLabel, {marginTop: 20}]}>MOTIVO DE CONSULTA</Text>
+        
+        <Text style={[styles.inputLabel, {marginTop: 10}]}>MOTIVO DE CONSULTA / SÍNTOMAS</Text>
         <TextInput 
           style={styles.textArea} 
-          placeholder="Escribe aquí el motivo o detalles..." 
+          placeholder="Escribe aquí el motivo o detalles de la visita..." 
           multiline 
           placeholderTextColor="#94A3B8" 
           value={notasAdicionales}
@@ -341,39 +351,97 @@ export default function AgendarScreen() {
     );
   };
 
-  const renderFecha = () => (
-    <View style={styles.fadeContainer}>
-      <Text style={styles.stepTitle}>Selecciona el horario</Text>
-      
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 30}}>
-        {fechasDisponibles.map((d, index) => {
-          const isSelected = fechaSel.getDate() === d.getDate();
-          return (
-            <TouchableOpacity 
-              key={index} 
-              style={[styles.dateBox, isSelected && styles.dateBoxActive]}
-              onPress={() => setFechaSel(d)}
-            >
-              <Text style={[styles.dateNum, isSelected && styles.dateNumActive]}>{d.getDate()}</Text>
-              <Text style={[styles.dateMonth, isSelected && styles.dateMonthActive]}>{meses[d.getMonth()]}</Text>
-            </TouchableOpacity>
-          )
-        })}
-      </ScrollView>
+  const renderFecha = () => {
+    // Si es hospedaje, mostramos Rango de Fechas (Ingreso y Salida)
+    if (servicio === 'hospedaje') return (
+      <View style={styles.fadeContainer}>
+        <Text style={styles.stepTitle}>Fechas de Estancia</Text>
+        
+        <Text style={styles.inputLabel}>FECHA DE INGRESO (CHECK-IN)</Text>
+        <View style={{ marginBottom: 25 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
+            {fechasDisponibles.map((d, index) => {
+              const isSelected = fechaSel.getDate() === d.getDate() && fechaSel.getMonth() === d.getMonth();
+              return (
+                <TouchableOpacity 
+                  key={`ingreso-${index}`} 
+                  style={[styles.dateBox, isSelected && styles.dateBoxActive]}
+                  onPress={() => {
+                    setFechaSel(d);
+                    // Si la fecha de salida seleccionada es menor o igual al ingreso, la recorremos un día adelante automáticamente
+                    if (fechaSalidaSel <= d) {
+                      const next = new Date(d);
+                      next.setDate(next.getDate() + 1);
+                      setFechaSalidaSel(next);
+                    }
+                  }}
+                >
+                  <Text style={[styles.dateNum, isSelected && styles.dateNumActive]}>{d.getDate()}</Text>
+                  <Text style={[styles.dateMonth, isSelected && styles.dateMonthActive]}>{meses[d.getMonth()]}</Text>
+                </TouchableOpacity>
+              )
+            })}
+          </ScrollView>
+        </View>
 
-      <View style={styles.timeGrid}>
-        {['10:00 AM', '11:00 AM', '01:00 PM', '04:00 PM', '06:00 PM'].map(t => (
-          <TouchableOpacity 
-            key={t} 
-            style={[styles.timeSlot, horaSel === t && {borderColor: '#D97706', backgroundColor: '#FFFBEB'}]}
-            onPress={() => setHoraSel(t)}
-          >
-            <Text style={[styles.timeSlotText, horaSel === t && {color: '#D97706'}]}>{t}</Text>
-          </TouchableOpacity>
-        ))}
+        <Text style={styles.inputLabel}>FECHA DE SALIDA (CHECK-OUT)</Text>
+        <View style={{ marginBottom: 30 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
+            {fechasDisponibles.filter(d => d > fechaSel).map((d, index) => {
+              const isSelected = fechaSalidaSel.getDate() === d.getDate() && fechaSalidaSel.getMonth() === d.getMonth();
+              return (
+                <TouchableOpacity 
+                  key={`salida-${index}`} 
+                  style={[styles.dateBox, isSelected && {backgroundColor: '#D97706', borderColor: '#D97706'}]}
+                  onPress={() => setFechaSalidaSel(d)}
+                >
+                  <Text style={[styles.dateNum, isSelected && styles.dateNumActive]}>{d.getDate()}</Text>
+                  <Text style={[styles.dateMonth, isSelected && styles.dateMonthActive]}>{meses[d.getMonth()]}</Text>
+                </TouchableOpacity>
+              )
+            })}
+          </ScrollView>
+        </View>
       </View>
-    </View>
-  );
+    );
+
+    // Si es Veterinaria o Grooming, mostramos Fecha + Horario
+    return (
+      <View style={styles.fadeContainer}>
+        <Text style={styles.stepTitle}>Selecciona el horario</Text>
+        
+        <View style={{ marginBottom: 30 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
+            {fechasDisponibles.map((d, index) => {
+              const isSelected = fechaSel.getDate() === d.getDate() && fechaSel.getMonth() === d.getMonth();
+              return (
+                <TouchableOpacity 
+                  key={index} 
+                  style={[styles.dateBox, isSelected && styles.dateBoxActive]}
+                  onPress={() => setFechaSel(d)}
+                >
+                  <Text style={[styles.dateNum, isSelected && styles.dateNumActive]}>{d.getDate()}</Text>
+                  <Text style={[styles.dateMonth, isSelected && styles.dateMonthActive]}>{meses[d.getMonth()]}</Text>
+                </TouchableOpacity>
+              )
+            })}
+          </ScrollView>
+        </View>
+
+        <View style={styles.timeGrid}>
+          {HORARIOS_COMPLETOS.map(t => (
+            <TouchableOpacity 
+              key={t} 
+              style={[styles.timeSlot, horaSel === t && {borderColor: '#D97706', backgroundColor: '#FFFBEB'}]}
+              onPress={() => setHoraSel(t)}
+            >
+              <Text style={[styles.timeSlotText, horaSel === t && {color: '#D97706'}]}>{t}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -381,7 +449,7 @@ export default function AgendarScreen() {
         <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : router.back()} disabled={procesando}>
           <Ionicons name="close" size={28} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Agendar Cita</Text>
+        <Text style={styles.headerTitle}>Agendar {servicio}</Text>
         <View style={{width: 28}} />
       </View>
 
@@ -397,7 +465,13 @@ export default function AgendarScreen() {
             <View style={styles.summaryCard}>
               <Text style={styles.summaryLabel}>SERVICIO: <Text style={styles.summaryValue}>{servicio === 'grooming' ? tipoServicioGrooming.toUpperCase() : servicio?.toString().toUpperCase()}</Text></Text>
               <Text style={styles.summaryLabel}>PACIENTE: <Text style={styles.summaryValue}>{mascotaSel?.nombre}</Text></Text>
-              <Text style={styles.summaryLabel}>FECHA: <Text style={styles.summaryValue}>{fechaSel.getDate()} de {meses[fechaSel.getMonth()]}, {horaSel}</Text></Text>
+              <Text style={styles.summaryLabel}>
+                FECHA: <Text style={styles.summaryValue}>
+                  {servicio === 'hospedaje' 
+                    ? `Ingreso: ${fechaSel.getDate()} ${meses[fechaSel.getMonth()]} - Salida: ${fechaSalidaSel.getDate()} ${meses[fechaSalidaSel.getMonth()]}`
+                    : `${fechaSel.getDate()} de ${meses[fechaSel.getMonth()]}, ${horaSel}`}
+                </Text>
+              </Text>
               
               {servicio === 'grooming' && (
                 <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
@@ -427,7 +501,7 @@ export default function AgendarScreen() {
           {procesando ? (
              <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.mainButtonText}>{step === 4 ? 'Confirmar y Agendar' : 'Siguiente Paso'}</Text>
+            <Text style={styles.mainButtonText}>{step === 4 ? 'Confirmar Solicitud' : 'Siguiente Paso'}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -438,7 +512,7 @@ export default function AgendarScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A', textTransform: 'capitalize' },
   progressWrapper: { height: 70, justifyContent: 'center', paddingHorizontal: 40, marginBottom: 20 },
   progressLineBase: { height: 3, backgroundColor: '#F1F5F9', width: '100%', position: 'absolute', left: 40 },
   progressLineFill: { height: 3, backgroundColor: '#D97706', position: 'absolute', left: 40 },
@@ -460,7 +534,7 @@ const styles = StyleSheet.create({
   inputLabel: { fontSize: 11, fontWeight: '800', color: '#94A3B8', letterSpacing: 1.2, marginBottom: 12 },
   checkOption: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
   checkText: { marginLeft: 12, fontSize: 16, color: '#0F172A', fontWeight: '600' },
-  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 },
   tag: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   tagActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
   tagText: { color: '#64748B', fontWeight: '700' },
@@ -476,15 +550,15 @@ const styles = StyleSheet.create({
   nudosBtnActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
   nudosText: { fontWeight: '700', color: '#64748B' },
   nudosTextActive: { color: '#FFFFFF' },
-  dateBox: { width: 65, height: 85, borderRadius: 20, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', marginRight: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  dateBox: { width: 70, height: 90, borderRadius: 20, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', marginRight: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   dateBoxActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
   dateNum: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
   dateNumActive: { color: '#FFFFFF' },
   dateMonth: { fontSize: 10, fontWeight: '700', color: '#64748B' },
   dateMonthActive: { color: '#94A3B8' },
-  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  timeSlot: { width: '48%', padding: 18, borderRadius: 15, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
-  timeSlotText: { fontWeight: '700', color: '#0F172A' },
+  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  timeSlot: { width: '31%', paddingVertical: 15, borderRadius: 15, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', marginBottom: 10 },
+  timeSlotText: { fontWeight: '700', color: '#0F172A', fontSize: 12 },
   summaryCard: { backgroundColor: '#F8FAFC', padding: 25, borderRadius: 24, borderWidth: 1, borderColor: '#E2E8F0' },
   summaryLabel: { fontSize: 12, fontWeight: '800', color: '#94A3B8', marginBottom: 10 },
   summaryValue: { color: '#0F172A', fontSize: 16 },

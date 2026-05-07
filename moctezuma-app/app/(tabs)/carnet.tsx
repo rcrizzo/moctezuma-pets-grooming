@@ -7,18 +7,18 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../firebase';
 
 export default function CarnetScreen() {
-  const { petId } = useLocalSearchParams(); // Recibimos el ID si viene desde Home
+  const { petId } = useLocalSearchParams(); 
   const [loading, setLoading] = useState(true);
   const [misMascotas, setMisMascotas] = useState<any[]>([]);
   const [mascotaSel, setMascotaSel] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'vacunas' | 'parasitos'>('vacunas');
+  const [registrosMedicos, setRegistrosMedicos] = useState<any[]>([]);
 
+  // 1. Cargar las mascotas del usuario
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
 
-    // 1. Buscamos todas las mascotas del usuario en tiempo real
-    // Nota: Usamos la lógica de dashboardId que ya sincronizamos en Home
     const qUser = query(collection(db, 'usuarios'), where('uid', '==', user.uid));
     
     const unsubMascotas = onSnapshot(qUser, (userSnap) => {
@@ -30,12 +30,11 @@ export default function CarnetScreen() {
           const lista = petSnap.docs.map(d => ({ id: d.id, ...d.data() }));
           setMisMascotas(lista);
           
-          // 2. Si venimos de Home con un petId, seleccionamos esa mascota
           if (petId) {
             const encontrada = lista.find(p => p.id === petId);
             if (encontrada) setMascotaSel(encontrada);
           } else if (lista.length > 0 && !mascotaSel) {
-            setMascotaSel(lista[0]); // Por defecto la primera
+            setMascotaSel(lista[0]); 
           }
           setLoading(false);
         });
@@ -44,6 +43,50 @@ export default function CarnetScreen() {
 
     return () => unsubMascotas();
   }, [petId]);
+
+  // 2. Cargar los registros de la mascota y ordenarlos de forma segura
+  useEffect(() => {
+    if (!mascotaSel) {
+      setRegistrosMedicos([]);
+      return;
+    }
+
+    const qCarnets = query(collection(db, 'carnets'), where('mascotaId', '==', mascotaSel.id));
+    
+    const unsubCarnets = onSnapshot(qCarnets, (snap) => {
+      const historial = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Ordenamiento 100% seguro (sin crasheos por metadatos nulos)
+      historial.sort((a: any, b: any) => {
+        // Respaldos de tiempo numérico
+        const timeA = a.fechaTimestamp?.seconds || a.createdAt?.seconds || 0;
+        const timeB = b.fechaTimestamp?.seconds || b.createdAt?.seconds || 0;
+        
+        if (timeA !== timeB) return timeB - timeA;
+
+        // Si no hay timestamp válido, ordenamos usando el texto de la fecha de aplicación
+        const dateA = typeof a.fechaAplicacion === 'string' ? a.fechaAplicacion : '';
+        const dateB = typeof b.fechaAplicacion === 'string' ? b.fechaAplicacion : '';
+        return dateB.localeCompare(dateA);
+      });
+      
+      setRegistrosMedicos(historial);
+    }, (error) => {
+      console.error("Error al obtener carnets: ", error);
+    });
+
+    return () => unsubCarnets();
+  }, [mascotaSel]);
+
+  // 3. Filtrar según la pestaña activa
+  const registrosFiltrados = registrosMedicos.filter((registro) => {
+    const tipo = registro.tipo || ''; // Evita crasheos si el tipo es undefined
+    if (activeTab === 'vacunas') {
+      return tipo === 'Vacunación' || tipo.toLowerCase().includes('vacuna');
+    } else {
+      return tipo.toLowerCase().includes('desparasita');
+    }
+  });
 
   if (loading) {
     return (
@@ -58,7 +101,7 @@ export default function CarnetScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* SELECTOR DE MASCOTAS (Burbujas) */}
+        {/* SELECTOR DE MASCOTAS */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.selectorScroll}>
           {misMascotas.map((pet) => (
             <TouchableOpacity 
@@ -66,7 +109,7 @@ export default function CarnetScreen() {
               onPress={() => setMascotaSel(pet)}
               style={[styles.petBubble, mascotaSel?.id === pet.id && styles.petBubbleActive]}
             >
-              <Text style={{fontSize: 24}}>{pet.tipo === 'Gato' ? '🐱' : '🐶'}</Text>
+              <Text style={{fontSize: 24}}>{pet.tipo === 'Gato' || pet.tipo === 'gato' ? '🐱' : '🐶'}</Text>
               <Text style={[styles.petBubbleName, mascotaSel?.id === pet.id && styles.petBubbleNameActive]}>
                 {pet.nombre}
               </Text>
@@ -85,17 +128,17 @@ export default function CarnetScreen() {
               
               <View style={styles.idCardBody}>
                 <View style={styles.idPhotoBox}>
-                  <Text style={{fontSize: 40}}>{mascotaSel.tipo === 'Gato' ? '🐱' : '🐶'}</Text>
+                  <Text style={{fontSize: 40}}>{mascotaSel.tipo === 'Gato' || mascotaSel.tipo === 'gato' ? '🐱' : '🐶'}</Text>
                 </View>
                 
                 <View style={styles.idInfoGrid}>
                   <InfoItem label="NOMBRE" value={mascotaSel.nombre} />
-                  <InfoItem label="RAZA" value={mascotaSel.raza} />
+                  <InfoItem label="RAZA" value={mascotaSel.raza || 'N/A'} />
                   <RowInfo>
-                    <InfoItem label="EDAD" value={mascotaSel.edad || 'N/A'} />
-                    <InfoItem label="PESO" value={mascotaSel.peso || 'N/A'} />
+                    <InfoItem label="TALLA" value={mascotaSel.talla || 'N/A'} />
+                    <InfoItem label="PESO" value={mascotaSel.peso ? `${mascotaSel.peso} kg` : 'N/A'} />
                   </RowInfo>
-                  <InfoItem label="COLOR" value={mascotaSel.colorMascota || 'N/A'} />
+                  <InfoItem label="COLOR/PELO" value={mascotaSel.tipoPelo || 'N/A'} />
                 </View>
               </View>
             </View>
@@ -114,10 +157,28 @@ export default function CarnetScreen() {
                 <Text style={styles.th}>FIRMA</Text>
               </View>
               
-              {/* Aquí mapearemos los carnets reales que "sellas" en el Dashboard */}
-              <View style={styles.tableBody}>
-                <Text style={styles.emptyMsg}>No hay registros recientes para {mascotaSel.nombre}</Text>
-              </View>
+              {registrosFiltrados.length > 0 ? (
+                registrosFiltrados.map((item) => (
+                  <View key={item.id} style={styles.tableRow}>
+                    <View style={styles.tdFecha}>
+                      <Text style={styles.fechaText}>{item.fechaAplicacion || 'N/A'}</Text>
+                      <Text style={styles.proxText}>Próx: {item.proximaDosis || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.tdProducto}>
+                      <Text style={styles.productoText}>{item.producto || 'Sin especificar'}</Text>
+                      <Text style={styles.loteText}>Lote: {item.lote || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.tdFirma}>
+                      <Ionicons name="shield-checkmark" size={16} color="#10B981" />
+                      <Text style={styles.mvzText} numberOfLines={1}>{item.mvz || 'MVZ'}</Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.tableBody}>
+                  <Text style={styles.emptyMsg}>No hay registros recientes para {mascotaSel.nombre}</Text>
+                </View>
+              )}
             </View>
           </View>
         ) : (
@@ -131,7 +192,7 @@ export default function CarnetScreen() {
   );
 }
 
-// Sub-componentes para el Carnet
+// Sub-componentes
 const InfoItem = ({ label, value }: any) => (
   <View style={styles.infoItem}>
     <Text style={styles.infoLabel}>{label}</Text>
@@ -185,6 +246,16 @@ const styles = StyleSheet.create({
   th: { flex: 1, fontSize: 10, fontWeight: '800', color: '#64748B', textAlign: 'center' },
   tableBody: { padding: 30, alignItems: 'center' },
   emptyMsg: { color: '#94A3B8', fontSize: 13, textAlign: 'center', fontStyle: 'italic' },
+
+  tableRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingVertical: 15, alignItems: 'center', paddingHorizontal: 10 },
+  tdFecha: { flex: 1, alignItems: 'center' },
+  tdProducto: { flex: 2, alignItems: 'center', paddingHorizontal: 5 },
+  tdFirma: { flex: 1, alignItems: 'center', gap: 2 },
+  fechaText: { fontSize: 11, fontWeight: '800', color: '#0F172A' },
+  proxText: { fontSize: 9, color: '#D97706', fontWeight: '700', marginTop: 2 },
+  productoText: { fontSize: 12, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
+  loteText: { fontSize: 10, color: '#64748B', marginTop: 2 },
+  mvzText: { fontSize: 9, color: '#64748B', textAlign: 'center' },
 
   noData: { alignItems: 'center', marginTop: 100 },
   noDataText: { color: '#64748B', marginTop: 10, fontWeight: '600' }

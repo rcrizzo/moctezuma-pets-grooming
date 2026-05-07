@@ -16,11 +16,11 @@ export default function Clientes() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   
-  // Estados para Edición
+  // EDICIÓN
   const [editando, setEditando] = useState(false);
   const [idClienteEdit, setIdClienteEdit] = useState(null);
 
-  // Estados para el perfil seleccionado
+  // ESTADOS DE PERFIL DE CLIENTE
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [mascotasDelCliente, setMascotasDelCliente] = useState([]);
   const [cargandoMascotas, setCargandoMascotas] = useState(false);
@@ -38,7 +38,7 @@ export default function Clientes() {
     return () => unsubscribe();
   }, []);
 
-  // --- FUNCIONES DE LECTURA ---
+  // FUNCIONES DE LECTURA
   const verPerfil = async (cliente) => {
     setClienteSeleccionado(cliente);
     setShowModalPerfil(true);
@@ -47,7 +47,7 @@ export default function Clientes() {
     try {
       const qMascotas = query(
         collection(db, 'mascotas'), 
-        where('duenoNombre', '==', cliente.nombre) // CORREGIDO A 'duenoNombre'
+        where('duenoNombre', '==', cliente.nombre)
       );
       const snap = await getDocs(qMascotas);
       const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -59,7 +59,7 @@ export default function Clientes() {
     }
   };
 
-  // --- FUNCIONES DE ESCRITURA (CREAR / EDITAR / ELIMINAR) ---
+  // FUNCIONES DE ESCRITURA
   const handleChange = (e) => setNuevoCliente({ ...nuevoCliente, [e.target.name]: e.target.value });
 
   const prepararEdicion = (cliente) => {
@@ -87,7 +87,7 @@ export default function Clientes() {
     setGuardando(true);
     try {
       if (editando) {
-        // ACTUALIZAR EXISTENTE
+        // ACTUALIZAR
         await updateDoc(doc(db, 'usuarios', idClienteEdit), {
           nombre: nuevoCliente.nombre.trim(),
           telefono: nuevoCliente.telefono.trim(),
@@ -204,7 +204,7 @@ export default function Clientes() {
         )}
       </div>
       
-      {/* --- MODAL 1: FORMULARIO (NUEVO / EDITAR) --- */}
+      {/* FORMULARIO */}
       <Modal show={showModal} onHide={cerrarModalFormulario} centered>
         <Modal.Header closeButton className="border-0">
           <Modal.Title className="fw-bold">{editando ? 'Editar Cliente' : 'Registro de Cliente'}</Modal.Title>
@@ -230,7 +230,7 @@ export default function Clientes() {
         </Modal.Body>
       </Modal>
 
-      {/* --- MODAL 2: PERFIL DETALLADO --- */}
+      {/* PERFIL DETALLADO */}
       <Modal show={showModalPerfil} onHide={() => setShowModalPerfil(false)} centered size="lg">
         <Modal.Header closeButton className="bg-light border-0">
           <Modal.Title className="fw-bold">Expediente del Cliente</Modal.Title>
@@ -238,7 +238,6 @@ export default function Clientes() {
         <Modal.Body className="p-0">
           {clienteSeleccionado && (
             <div className="d-flex flex-column flex-md-row">
-              {/* Columna Izquierda: Info Dueño */}
               <div className="p-4 border-end bg-light" style={{ width: '100%', maxWidth: '300px' }}>
                 <div className="text-center mb-4">
                   <div className="mx-auto mb-3" style={{width: '80px', height: '80px', borderRadius: '20px', backgroundColor: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'}}>
@@ -262,7 +261,6 @@ export default function Clientes() {
                 </div>
               </div>
 
-              {/* Columna Derecha: Mascotas y Actividad */}
               <div className="p-4 flex-grow-1">
                 <h6 className="fw-bold d-flex align-items-center gap-2 mb-4">
                   <IoPaw color="var(--accent)"/> Mascotas Registradas

@@ -22,6 +22,23 @@ import {
 } from 'react-bootstrap';
 import { IoSearch, IoPaw, IoCreate, IoTrash, IoFitness, IoColorWand } from 'react-icons/io5';
 
+// --- CATÁLOGO DE RAZAS ---
+const RAZAS_DISPONIBLES = [
+  // Generales / Mestizos
+  'Criollo / Mestizo (Perro)', 'Criollo / Mestizo (Gato)',
+  // Perros Populares
+  'Akita Inu', 'Beagle', 'Border Collie', 'Boxer', 'Bulldog Francés', 'Bulldog Inglés', 
+  'Chihuahua', 'Chow Chow', 'Cocker Spaniel', 'Corgi', 'Dálmata', 'Dóberman', 
+  'Golden Retriever', 'Gran Danés', 'Husky Siberiano', 'Labrador Retriever', 'Maltés', 
+  'Pastor Alemán', 'Pastor Belga', 'Pitbull Terrier', 'Pomerania', 'Poodle (Caniche)', 
+  'Pug', 'Rottweiler', 'San Bernardo', 'Scotch Terrier', 'Schnauzer', 'Shih Tzu', 'Xoloitzcuintle', 'Yorkshire Terrier',
+  // Gatos Populares
+  'Angora', 'Azul Ruso', 'Bengala', 'Bobtail', 'Esfinge (Sphynx)', 
+  'Gato Europeo', 'Maine Coon', 'Persa', 'Ragdoll', 'Siamés',
+  // Otros
+  'Otro'
+];
+
 const Mascotas = () => {
   const [mascotas, setMascotas] = useState([]);
   const [clientes, setClientes] = useState([]);
@@ -29,7 +46,7 @@ const Mascotas = () => {
   const [showEdit, setShowEdit] = useState(false);
   const [perfilAEditar, setPerfilAEditar] = useState(null);
 
-  // Estado del formulario de registro
+  // ESTADO DEL FORMULARIO
   const [nuevaMascota, setNuevaMascota] = useState({
     nombre: '',
     duenoId: '',
@@ -49,13 +66,11 @@ const Mascotas = () => {
   const tallasDisponibles = ['Mini', 'Chico', 'Mediano', 'Grande', 'Gigante'];
 
   useEffect(() => {
-    // Escuchar mascotas
     const qMascotas = query(collection(db, "mascotas"));
     const unsubMascotas = onSnapshot(qMascotas, (snapshot) => {
       setMascotas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Escuchar clientes para el select (CORREGIDO PARA APUNTAR A 'usuarios')
     const qClientes = query(collection(db, "usuarios"), where("rol", "==", "cliente"));
     const unsubClientes = onSnapshot(qClientes, (snapshot) => {
       setClientes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -112,13 +127,13 @@ const Mascotas = () => {
 
   const filteredMascotas = mascotas.filter(m => 
     m.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
-    m.duenoNombre.toLowerCase().includes(busqueda.toLowerCase())
+    m.duenoNombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+    (m.raza && m.raza.toLowerCase().includes(busqueda.toLowerCase()))
   );
 
   return (
     <div className="animate-fade-in">
       <Row className="g-4">
-        {/* FORMULARIO DE REGISTRO */}
         <Col lg={4}>
           <div className="glass-card p-4">
             <h4 className="fw-bold mb-1">Registro de Perfil</h4>
@@ -140,15 +155,34 @@ const Mascotas = () => {
                 </Form.Select>
               </Form.Group>
 
-              <Form.Group className="mb-3">
-                <Form.Label className="custom-label">Nombre de la Mascota</Form.Label>
-                <Form.Control 
-                  className="custom-input"
-                  placeholder="Ej. Rocky"
-                  value={nuevaMascota.nombre}
-                  onChange={(e) => setNuevaMascota({...nuevaMascota, nombre: e.target.value})}
-                />
-              </Form.Group>
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Nombre de la Mascota</Form.Label>
+                    <Form.Control 
+                      className="custom-input"
+                      placeholder="Ej. Rocky"
+                      value={nuevaMascota.nombre}
+                      onChange={(e) => setNuevaMascota({...nuevaMascota, nombre: e.target.value})}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label className="custom-label">Raza</Form.Label>
+                    <Form.Control 
+                      list="razas-opciones"
+                      className="custom-input"
+                      placeholder="Escribe o selecciona..."
+                      value={nuevaMascota.raza}
+                      onChange={(e) => setNuevaMascota({...nuevaMascota, raza: e.target.value})}
+                    />
+                    <datalist id="razas-opciones">
+                      {RAZAS_DISPONIBLES.map(raza => <option key={raza} value={raza} />)}
+                    </datalist>
+                  </Form.Group>
+                </Col>
+              </Row>
 
               <Row>
                 <Col md={6}>
@@ -226,7 +260,7 @@ const Mascotas = () => {
               <IoSearch className="position-absolute" style={{top: '14px', left: '16px', color: 'var(--text-muted)'}} />
               <Form.Control 
                 className="custom-input ps-5"
-                placeholder="Buscar mascota o dueño..."
+                placeholder="Buscar mascota o raza..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
               />
@@ -245,7 +279,8 @@ const Mascotas = () => {
                         </div>
                         <div>
                           <h5 className="fw-bold m-0">{m.nombre}</h5>
-                          <p className="text-muted small m-0">Dueño: {m.duenoNombre}</p>
+                          <p className="text-muted small m-0 mb-1">Dueño: {m.duenoNombre}</p>
+                          {m.raza && <Badge bg="secondary" className="fw-normal">{m.raza}</Badge>}
                         </div>
                       </div>
                       <Badge bg="info" className="p-2">{m.talla}</Badge>
@@ -302,7 +337,7 @@ const Mascotas = () => {
               </Form.Group>
 
               <Row>
-                <Col md={8}>
+                <Col md={7}>
                   <Form.Group className="mb-3">
                     <Form.Label className="custom-label">Nombre</Form.Label>
                     <Form.Control 
@@ -312,7 +347,7 @@ const Mascotas = () => {
                     />
                   </Form.Group>
                 </Col>
-                <Col md={4}>
+                <Col md={5}>
                   <Form.Group className="mb-3">
                     <Form.Label className="custom-label">Peso (kg)</Form.Label>
                     <Form.Control 
@@ -325,6 +360,20 @@ const Mascotas = () => {
                   </Form.Group>
                 </Col>
               </Row>
+
+              <Form.Group className="mb-3">
+                <Form.Label className="custom-label">Raza</Form.Label>
+                <Form.Control 
+                  list="razas-opciones-edit"
+                  className="custom-input"
+                  placeholder="Escribe o selecciona..."
+                  value={perfilAEditar.raza || ''}
+                  onChange={(e) => setPerfilAEditar({...perfilAEditar, raza: e.target.value})}
+                />
+                <datalist id="razas-opciones-edit">
+                  {RAZAS_DISPONIBLES.map(raza => <option key={raza} value={raza} />)}
+                </datalist>
+              </Form.Group>
 
               <Row>
                 <Col md={6}>

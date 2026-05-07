@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Form, Spinner } from 'react-bootstrap';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { db } from '../firebase'; // Importamos tu conexión
+import { db } from '../firebase';
 
 export default function LogisticaTable() {
   const [citas, setCitas] = useState([]);
   const [cargando, setCargando] = useState(true);
 
-  // 1. Escuchar la base de datos en tiempo real
+  // ESCUHAR CAMBIOS EN FIRESTORE EN TIEMPO REAL
   useEffect(() => {
-    // Obtenemos las citas (idealmente podrías ordenarlas por hora después)
     const q = query(collection(db, 'citas'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -24,7 +23,7 @@ export default function LogisticaTable() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Actualizar el estado en la nube al mover el switch
+  // ACTUALIZAR ESTADO DE LA CITA EN FIRESTORE
   const alternarAprobado = async (idCita, estadoActual) => {
     const nuevoEstado = estadoActual === 'Agendado' ? 'Aprobado' : 'Agendado';
     try {
