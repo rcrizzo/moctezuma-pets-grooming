@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Spinner, Badge, ProgressBar, Card, Button, ButtonGroup, Modal, Form } from 'react-bootstrap';
-import { collection, onSnapshot, query, orderBy, where, doc, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
+// IMPORTANTE: Se agregó getDoc a las importaciones
+import { collection, onSnapshot, query, orderBy, where, doc, deleteDoc, updateDoc, getDocs, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
   IoTrendingUp, IoPaw, IoCut, IoHome, IoAlertCircle, 
@@ -130,21 +131,45 @@ export default function Resumen() {
 
   const citasSemana = [...citasGrooming, ...citasVet];
 
-  // LÓGICA DE INTERACCIÓN
+  // LÓGICA DE INTERACCIÓN OPTIMIZADA
   const abrirDetalle = async (cita) => {
     setCitaSeleccionada(cita);
     setEditando(false);
     setShowModal(true);
     setTelefonoCliente('');
 
-    // BÚSQUEDA DEL CLIENTE
+    // BÚSQUEDA DEL CLIENTE (Maneja tanto App como Dashboard manual)
     const idBuscar = cita.clienteId || cita.duenoId || cita.dueñoId;
+    
     if (idBuscar) {
-        const q = query(collection(db, 'clientes'), where('__name__', '==', idBuscar));
-        const userSnap = await getDocs(q);
-        if (!userSnap.empty) {
-            setTelefonoCliente(userSnap.docs[0].data().telefono || '');
+      try {
+        let telEncontrado = '';
+
+        // 1. Buscamos primero en 'usuarios' por si la cita la hizo el dueño desde la App Móvil
+        const docUser = await getDoc(doc(db, 'usuarios', idBuscar));
+        if (docUser.exists() && docUser.data().telefono) {
+          telEncontrado = docUser.data().telefono;
+        } else {
+          // A veces el idBuscar es el campo 'uid' y no el ID del documento en usuarios
+          const qUser = query(collection(db, 'usuarios'), where('uid', '==', idBuscar));
+          const snapUser = await getDocs(qUser);
+          if (!snapUser.empty && snapUser.docs[0].data().telefono) {
+            telEncontrado = snapUser.docs[0].data().telefono;
+          } else {
+            // 2. Si no estaba en usuarios de la app, buscamos en 'clientes' (los creados a mano en el dashboard)
+            const docCliente = await getDoc(doc(db, 'clientes', idBuscar));
+            if (docCliente.exists() && docCliente.data().telefono) {
+              telEncontrado = docCliente.data().telefono;
+            }
+          }
         }
+        
+        if (telEncontrado) {
+          setTelefonoCliente(telEncontrado);
+        }
+      } catch (error) {
+        console.error("Error al buscar el teléfono:", error);
+      }
     }
   };
 
@@ -396,7 +421,7 @@ export default function Resumen() {
         </Col>
       </Row>
 
-      {/* DETALLE DE CITA */}
+      {/* DETALLE DE CITA CON WHATSAPP */}
       <Modal show={showModal} onHide={() => setShowModal(false)} centered>
         <Modal.Header closeButton className="bg-light">
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
@@ -448,6 +473,7 @@ export default function Resumen() {
               </div>
 
               <div className="d-grid gap-2">
+                {/* BOTÓN DE WHATSAPP INTEGRADO */}
                 {telefonoCliente && (
                     <Button 
                         href={`https://wa.me/52${telefonoCliente}`} 

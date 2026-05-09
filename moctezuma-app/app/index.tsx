@@ -81,10 +81,6 @@ export default function LoginScreen() {
               />
             </View>
 
-            <TouchableOpacity style={styles.forgotButton} onPress={() => router.push('/recovery')} disabled={cargando}>
-              <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity 
               style={[styles.primaryButton, cargando && { opacity: 0.7 }]} 
               onPress={handleLogin}
